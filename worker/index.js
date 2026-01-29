@@ -64,7 +64,7 @@ async function processDocument(documentId, storagePath) {
 
         // 3. Call Gemini 2.0 Flash
         await updateProgress(documentId, 'gemini_call', 'Analizando con Gemini 2.0 Flash...');
-        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+        const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-001' });
 
         const prompt = `
       Eres un experto en análisis de catálogos educativos.
