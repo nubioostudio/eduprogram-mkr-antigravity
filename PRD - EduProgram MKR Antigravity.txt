@@ -1,0 +1,271 @@
+# PRD — Aplicación Web B2B para Generación de Programas Educativos desde PDFs
+
+---
+
+## 1. Rol del Asistente (Meta Prompting)
+
+Eres un desarrollador de software experto de clase mundial en React, TypeScript, Tailwind CSS, Supabase, y VITE.
+Tu enfoque debe ser construir la aplicación con la máxima precisión, priorizando claridad arquitectónica, control de costes y cumplimiento estricto de todas las restricciones funcionales, de negocio y de diseño descritas en este documento.
+Nunca inventes funcionalidades, datos ni flujos no especificados explícitamente.
+
+---
+
+## 2. Descripción General y Visión
+
+Esta aplicación web B2B está diseñada para **agencias de educación internacional** que reciben grandes volúmenes de documentación en PDF de proveedores educativos (colegios, programas, catálogos, precios) y necesitan **transformarla rápidamente** en materiales publicables y profesionales.
+
+La plataforma permite subir documentos PDF y, mediante IA, **extraer, estructurar y reescribir el contenido sin inventar información**, generando outputs como:
+
+* PDFs bien diseñados
+* Landing pages rápidas en React
+
+Todo el contenido se adapta al **branding de la agencia**, al **idioma de salida elegido** y a un **enfoque editorial configurable** (venta, informativo, inspiracional).
+
+**Objetivo principal (MVP):**
+Entregar un sistema funcional donde una agencia pueda:
+
+* Subir un PDF
+* Obtener un briefing automático
+* Elegir enfoque e idioma de salida
+* Generar un output profesional (PDF o landing)
+* Iterar versiones y exportar el resultado
+
+---
+
+## 3. Stack y Restricciones Técnicas
+
+**Frontend**
+
+* React + TypeScript
+* VITE
+* Tailwind CSS
+* Mobile-First
+* UI limpia y minimalista tipo Stripe
+* Componentes ShadCN
+
+**Backend**
+
+* Supabase:
+
+  * PostgreSQL
+  * Auth
+  * Storage
+  * Row Level Security (RLS)
+
+**IA**
+
+* OpenAI (modelo GPT-4o / GPT-4.1 o equivalente)
+* Uso controlado mediante sistema de créditos internos
+
+**Restricciones clave**
+
+* La IA **nunca puede inventar información**
+* Todo output debe basarse únicamente en el contenido del PDF
+* Control estricto de costes por agencia
+* Sin sistema de pagos en el MVP
+
+---
+
+## 4. Arquitectura de Datos y Flujo
+
+### Modelos de Datos Clave
+
+* **Agencia**
+
+  * id, nombre, branding, configuración de idioma
+* **Usuario**
+
+  * id, email, agencia_id, rol
+* **Rol**
+
+  * admin, editor, supervisor
+* **Documento**
+
+  * id, agencia_id, archivo_pdf_original, idioma_origen
+* **Output**
+
+  * id, documento_id, tipo (pdf | landing)
+* **Versión**
+
+  * id, output_id, contenido, notas, estado
+* **Branding**
+
+  * colores, tipografías, logo, tono de marca
+* **Plantilla**
+
+  * tipo (pdf | web), estructura, metadata
+
+### Storage
+
+* PDFs originales
+* PDFs generados
+* HTML y assets de landing pages
+* Imágenes extraídas o subidas manualmente
+
+---
+
+## 5. Flujo de Usuario Detallado
+
+### Pantallas / Páginas
+
+* Login / Registro
+* Panel de Control
+* Biblioteca de Documentos
+* Vista Detalle de Documento
+* Editor + Chat IA
+* Vista de Output (PDF / Landing)
+* Gestión de Usuarios (admin)
+
+### Navegación Principal
+
+1. Usuario inicia sesión
+2. Accede al dashboard
+3. Sube un PDF
+4. La IA analiza el documento y genera un briefing
+5. El sistema solicita:
+
+   * Idioma de salida (uno por generación)
+   * Enfoque editorial (venta, informativo, inspiracional, etc.)
+6. El usuario selecciona:
+
+   * Tipo de output (PDF o Landing)
+   * Plantilla base
+7. Se genera la versión inicial
+8. El usuario:
+
+   * Edita manualmente contenido
+   * Itera con IA vía chat
+9. Se crean versiones automáticas con notas
+10. El supervisor valida y publica
+11. Exportación o enlace público
+
+### Estados
+
+* Empty state (sin documentos)
+* Procesando
+* Error de lectura / generación
+
+---
+
+## 6. Funcionalidades Clave y Orden de Implementación
+
+**Orden obligatorio**
+
+1. Diseño frontend
+2. Conexión backend
+3. Integraciones IA y lógica externa
+
+### Funcionalidades
+
+* Autenticación por agencia
+* Roles y permisos:
+
+  * Admin: usuarios y roles
+  * Editor: creación y edición
+  * Supervisor: branding, publicación y borrado
+* Subida y análisis de PDFs
+* Briefing automático del documento
+* Detección de:
+
+  * Secciones
+  * Tablas
+  * Precios
+  * Imágenes
+* Generación de contenido estructurado
+* Selección de plantillas
+* Edición manual + chat IA
+* Versionado automático con historial y notas
+* Auditoría completa (quién, cuándo, qué)
+* Exportación:
+
+  * Enlace público
+  * Descarga HTML
+  * Exportación a WordPress (ZIP o API)
+
+---
+
+## 7. Integraciones y Lógica Externa
+
+* **OpenAI**
+
+  * Extracción
+  * Reescritura
+  * Estructuración
+  * Multilingüe (idioma único por generación)
+* **Supabase Edge Functions**
+
+  * Procesamiento de PDFs
+  * Llamadas a IA
+  * Generación de outputs
+  * Exportaciones
+* **WordPress**
+
+  * Exportación manual (ZIP)
+  * Integración vía API (fase avanzada)
+
+### Control de Costes
+
+* Sistema interno de créditos por agencia
+* Consumo por:
+
+  * Análisis de PDF
+  * Generación de output
+  * Iteraciones IA
+* Rate limiting por agencia
+* Bloqueo al alcanzar límites
+
+---
+
+## 8. Lineamientos de Diseño UI/UX
+
+* Estilo visual:
+
+  * Minimalista
+  * Profesional
+  * Editorial
+* Referencia estética:
+
+  * Stripe
+* Dashboard:
+
+  * Limpio
+  * Espacios amplios
+  * Foco en documentos y estados
+* Mobile-first, optimizado para desktop
+* No sobrecargar con opciones avanzadas en el MVP
+
+---
+
+## 9. Alcance del Proyecto (Scope)
+
+### Incluido
+
+* Gestión de agencias y usuarios
+* Subida y procesamiento de PDFs
+* Generación de PDFs y landings
+* Versionado
+* Exportaciones
+* Auditoría
+* Control de costes interno
+
+### Excluido
+
+* Sistema de pagos (Stripe)
+* SEO avanzado
+* Diff visual entre versiones
+* Generación multilingüe simultánea
+* Marketplace de plantillas
+* Administración global del sistema
+
+---
+
+## 10. Nota Final (Chat Mode)
+
+Antes de generar cualquier código, el modelo debe:
+
+* Leer este documento completo
+* Confirmar comprensión en modo conversación
+* Validar que no existen contradicciones
+* Solicitar aclaraciones solo si son estrictamente necesarias
+
+No se debe generar código hasta que esta confirmación ocurra.
