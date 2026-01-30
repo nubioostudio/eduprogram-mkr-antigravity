@@ -97,17 +97,23 @@ export function BriefingPage() {
         if (!document) return;
         setLoading(true);
         try {
-            const { error } = await supabase
-                .from('documents')
-                .update({ briefing: program })
-                .eq('id', document.id);
+            // Disparamos la extracción profunda a través de la Edge Function
+            const { error } = await supabase.functions.invoke('process-document', {
+                body: {
+                    id: document.id,
+                    storage_path: document.storage_path,
+                    program_title: program.title
+                }
+            });
 
             if (error) throw error;
-            setDocument({ ...document, briefing: program });
-        } catch (error) {
+
+            // La UI entrará en estado de "processing" automáticamente por el realtime listener
+        } catch (error: any) {
             console.error('Error selecting program:', error);
-        } finally {
             setLoading(false);
+            const errorMsg = error.message || (typeof error === 'string' ? error : 'Error desconocido');
+            alert(`Error al iniciar la extracción profunda: ${errorMsg}`);
         }
     };
 
@@ -275,15 +281,36 @@ export function BriefingPage() {
             {/* Navigation Header */}
             <header className="sticky top-0 z-30 w-full bg-white/80 backdrop-blur-md border-b px-4 lg:px-8 py-4">
                 <div className="max-w-5xl mx-auto flex items-center justify-between">
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => navigate('/')}
-                        className="gap-2 text-muted-foreground hover:text-primary transition-colors"
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                        Volver al Panel
-                    </Button>
+                    <div className="flex items-center gap-3">
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => navigate('/')}
+                            className="gap-2 text-muted-foreground hover:text-primary transition-colors"
+                        >
+                            <ChevronLeft className="h-4 w-4" />
+                            Volver al Panel
+                        </Button>
+
+                        {document.available_programs && document.available_programs.length > 1 && (
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={async () => {
+                                    if (confirm('¿Quieres elegir otro programa de este catálogo? Se perderá el análisis actual.')) {
+                                        setLoading(true);
+                                        await supabase.from('documents').update({ briefing: null }).eq('id', id);
+                                        setDocument(prev => prev ? { ...prev, briefing: null } : null);
+                                        setLoading(false);
+                                    }
+                                }}
+                                className="gap-2 text-primary hover:bg-primary/5 font-bold"
+                            >
+                                <Layers className="h-4 w-4" />
+                                Cambiar Programa
+                            </Button>
+                        )}
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button
                             variant="outline"

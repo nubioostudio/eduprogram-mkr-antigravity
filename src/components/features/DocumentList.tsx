@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, Clock, AlertCircle, Loader2, ChevronRight, Trash2, AlertTriangle, CheckSquare, Square } from 'lucide-react';
+import { FileText, Clock, AlertCircle, Loader2, ChevronRight, Trash2, AlertTriangle, CheckSquare, Square, Layers } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
@@ -248,7 +248,7 @@ export function DocumentList() {
                                     <h4 className="text-sm font-bold truncate max-w-[150px] md:max-w-xs text-neutral-800">
                                         {doc.filename}
                                     </h4>
-                                    <div className="flex items-center gap-3 mt-1.5">
+                                    <div className="flex items-center gap-3 mt-1.5 flex-wrap">
                                         <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium">
                                             <Clock className="h-3 w-3" />
                                             {new Date(doc.created_at).toLocaleDateString('es-ES', {
@@ -259,6 +259,13 @@ export function DocumentList() {
                                             })}
                                         </div>
                                         <StatusBadge status={doc.status} />
+
+                                        {doc.available_programs && doc.available_programs.length > 1 && (
+                                            <div className="flex items-center gap-1 text-[9px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded-md uppercase tracking-[0.05em] border border-primary/20">
+                                                <Layers className="h-3 w-3" />
+                                                Catálogo ({doc.available_programs.length})
+                                            </div>
+                                        )}
 
                                         {doc.status === 'processed' && doc.proposals && doc.proposals.length > 0 && (
                                             <div className="flex items-center gap-2">
