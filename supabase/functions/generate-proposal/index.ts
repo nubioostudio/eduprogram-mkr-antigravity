@@ -16,7 +16,7 @@ Deno.serve(async (req: Request) => {
 
     try {
         const body = await req.json();
-        const { proposal_id } = body;
+        const { proposal_id, include_institution, include_location, cta_config } = body;
         currentProposalId = proposal_id;
 
         console.log("--- INICIANDO GENERACIÓN (v2.0 Flash) --- ID:", proposal_id);
@@ -61,6 +61,12 @@ Deno.serve(async (req: Request) => {
             BRIEFING DEL PROGRAMA:
             ${JSON.stringify(briefing)}
             
+            CONFIGURACIÓN OPCIONAL:
+            - Incluir Introducción de la Institución: ${include_institution ? 'SÍ' : 'NO'}
+            - Incluir Localización Detallada: ${include_location ? 'SÍ' : 'NO'}
+            - Tipo de CTA: ${cta_config?.type || 'Default'}
+            - Valor de CTA: ${cta_config?.value || 'N/A'}
+            
             REGLAS DE RESPUESTA:
             1. Devuelve ÚNICAMENTE un objeto JSON.
             2. 'headline': Un titular de impacto, no genérico (ej: "Domina el Arte de..." en lugar de "Curso de...").
@@ -69,6 +75,9 @@ Deno.serve(async (req: Request) => {
             5. 'key_benefits': 4 beneficios potentes centrados en RESULTADOS.
             6. 'call_to_action': Un cierre emocional y directo.
             7. 'image_prompt': Un prompt descriptivo en INGLÉS para Unsplash (ej: "cinematic photo of visionary leader in modern city office, sunrise light, 8k").
+            8. 'institution_intro' (OPCIONAL): Si la configuración lo pide, escribe 2-3 párrafos persuasivos sobre la excelencia de la institución basados en el briefing. Si no se pide, pon null.
+            9. 'location_section' (OPCIONAL): Si la configuración lo pide, escribe un texto que resalte las ventajas de estudiar en esa ciudad/país. Si no se pide, pon null.
+            10. 'cta_details': Objeto con { "text": "...", "link": "...", "type": "${cta_config?.type || 'button'}", "popup": ${cta_config?.type === 'form_popup'} }.
             
             ESTRUCTURA JSON:
             {
@@ -78,7 +87,10 @@ Deno.serve(async (req: Request) => {
                 "key_benefits": ["...", "...", "...", "..."],
                 "call_to_action": "...",
                 "visual_suggestions": "...",
-                "image_prompt": "..."
+                "image_prompt": "...",
+                "institution_intro": "...",
+                "location_section": "...",
+                "cta_details": { "text": "...", "link": "...", "type": "...", "popup": true }
             }
         `;
 

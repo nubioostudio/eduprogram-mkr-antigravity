@@ -237,6 +237,8 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
       Responde SOLO el JSON purificado.
     `;
 
+        console.log(`[DEBUG] Final Prompt for Deep Extraction:\n${prompt.substring(0, 500)}...`);
+
         const result = await model.generateContent([
             prompt,
             { inlineData: { data: base64, mimeType: 'application/pdf' } },

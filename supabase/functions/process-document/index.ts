@@ -34,9 +34,10 @@ Deno.serve(async (req: Request) => {
         const body = await req.json();
         console.log("Request Body:", JSON.stringify(body));
 
-        const { record, program_title } = body;
+        const { record, program_title, output_language: bodyLanguage } = body;
         documentId = record?.id || body.id;
         const storagePath = record?.storage_path || body.storage_path;
+        let outputLanguage = bodyLanguage || record?.output_language;
 
         if (!documentId) throw new Error("Missing document ID");
 
@@ -58,16 +59,31 @@ Deno.serve(async (req: Request) => {
             throw new Error(`Database error: ${updateError.message}`);
         }
 
+        if (!outputLanguage) {
+            console.log("No language in body, fetching from DB...");
+            const { data: docData } = await supabase
+                .from("documents")
+                .select("output_language")
+                .eq("id", documentId)
+                .single();
+            outputLanguage = docData?.output_language || 'es';
+        }
+        console.log(`Using output language: ${outputLanguage}`);
+
         // 5. Trigger the external worker service
-        console.log(`Calling worker at ${workerUrl}/${endpoint}`);
+        const payload = {
+            document_id: documentId,
+            storage_path: storagePath,
+            program_title: program_title,
+            target_language: outputLanguage
+        };
+        console.log(`[DEBUG] Target Worker URL: ${workerUrl}/${endpoint}`);
+        console.log(`[DEBUG] Final Payload sent to worker: ${JSON.stringify(payload)}`);
+
         const workerResponse = await fetch(`${workerUrl}/${endpoint}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                document_id: documentId,
-                storage_path: storagePath,
-                program_title: program_title
-            }),
+            body: JSON.stringify(payload),
         });
 
         if (!workerResponse.ok) {

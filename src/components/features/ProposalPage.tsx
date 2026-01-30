@@ -94,9 +94,11 @@ export function ProposalPage() {
 
             if (error) {
                 console.error('Error fetching proposal:', error);
+                setLoading(false);
             } else {
                 setProposal(data);
-                if (data.status === 'ready') setLoading(false);
+                // Stop loading if status is not processing
+                if (data.status !== 'processing') setLoading(false);
             }
         }
 
@@ -111,9 +113,11 @@ export function ProposalPage() {
                 filter: `id=eq.${id}`
             }, (payload) => {
                 setProposal((prev: any) => ({ ...prev, ...payload.new }));
-                if (payload.new.status === 'ready') {
+                if (payload.new.status !== 'processing') {
                     setLoading(false);
-                    fetchProposal();
+                    if (payload.new.status === 'ready') {
+                        fetchProposal();
+                    }
                 }
             })
             .subscribe();
@@ -192,17 +196,34 @@ export function ProposalPage() {
         );
     }
 
-    if (proposal?.status === 'error') {
-        const errorMessage = proposal.content?.error || 'Hubo un problema.';
+    if (proposal && proposal.status === 'error') {
         return (
-            <div className="flex flex-col items-center justify-center h-screen p-4 text-center gap-4">
-                <AlertCircle className="h-12 w-12 text-red-500" />
-                <h1 className="text-2xl font-bold">Error en la generación</h1>
-                <p className="text-muted-foreground max-w-sm">{errorMessage}</p>
-                <Button onClick={() => navigate('/')}>Volver al Panel</Button>
+            <div className="min-h-screen bg-neutral-50 flex flex-col items-center justify-center p-8 text-center space-y-6">
+                <div className="w-20 h-20 bg-red-100 rounded-3xl flex items-center justify-center text-red-600">
+                    <AlertCircle className="h-10 w-10" />
+                </div>
+                <div className="space-y-2 max-w-sm">
+                    <h2 className="text-2xl font-black text-neutral-900">Algo salió mal</h2>
+                    <p className="text-neutral-500 font-medium">
+                        No pudimos generar la propuesta en este momento. Por favor, inténtalo de nuevo.
+                    </p>
+                </div>
+                <Button
+                    onClick={() => {
+                        setLoading(true);
+                        supabase.functions.invoke('generate-proposal', { body: { proposal_id: id } });
+                    }}
+                    className="bg-neutral-900 hover:bg-neutral-800 text-white font-bold h-12 px-8 rounded-xl"
+                >
+                    Reintentar Generación
+                </Button>
+                <Button variant="ghost" onClick={() => navigate(-1)} className="text-neutral-500">
+                    Volver al Briefing
+                </Button>
             </div>
         );
     }
+
 
     const content = proposal.content || {};
     const heroColor = proposal?.documents?.agencies?.primary_color || '#000000';

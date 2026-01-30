@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { BriefingPage } from "@/components/features/BriefingPage";
 import { DocumentViewerPage } from "@/components/features/DocumentViewerPage";
 import { ProposalPage } from "@/components/features/ProposalPage";
+import { UploadPage } from "@/components/features/UploadPage";
 import { Dashboard } from "@/components/features/Dashboard";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/lib/supabase";
@@ -108,8 +109,8 @@ function Login() {
         </div>
         <div className="relative z-10 max-w-md space-y-4">
           <blockquote className="space-y-4">
-            <p className="text-4xl font-black leading-tight tracking-tight">
-              Diseñado para agencias que quieren <span className="text-primary">vender más</span> y trabajar menos.
+            <p className="text-4xl font-black leading-tight tracking-tight text-white">
+              Diseñado para agencias que quieren <span style={{ color: '#ffbd59' }}>eficacia y velocidad</span> en la publicación de sus activos.
             </p>
             <footer className="text-sm font-medium text-neutral-400 uppercase tracking-widest">— EduPrograms MKR</footer>
           </blockquote>
@@ -127,6 +128,11 @@ function App() {
           <Route path="/" element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          } />
+          <Route path="/upload" element={
+            <ProtectedRoute>
+              <UploadPage />
             </ProtectedRoute>
           } />
           <Route path="/login" element={<Login />} />

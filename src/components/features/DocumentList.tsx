@@ -16,6 +16,8 @@ export interface Document {
     briefing?: any;
     processing_error?: string;
     available_programs?: any[];
+    output_language?: string;
+    additional_context?: string;
     proposals?: {
         id: string;
         status: 'processing' | 'ready' | 'error';

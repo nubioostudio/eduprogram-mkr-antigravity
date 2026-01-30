@@ -1,15 +1,16 @@
 import { Button } from "@/components/ui/button";
-import { UploadDropzone } from "@/components/features/UploadDropzone";
 import { DocumentList } from "@/components/features/DocumentList";
 import { StatsOverview } from "@/components/features/StatsOverview";
 import { AgencySettings } from "@/components/features/AgencySettings";
 import { useAuth } from "@/contexts/AuthContext";
-import { LogOut, LayoutDashboard, Settings, User, Bell, Sparkles } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { LogOut, LayoutDashboard, Settings, User, Bell, Sparkles, Plus } from 'lucide-react';
 import { useState } from 'react';
 
 export function Dashboard() {
     const { profile, signOut } = useAuth();
     const [view, setView] = useState<'dashboard' | 'settings'>('dashboard');
+    const navigate = useNavigate();
 
     return (
         <div className="min-h-screen bg-[#FDFDFF]">
@@ -100,9 +101,15 @@ export function Dashboard() {
                                     </p>
                                 </div>
 
-                                {/* Integrated Compact Upload Area */}
-                                <div className="w-full lg:w-[320px] relative z-10 animate-in zoom-in-95 duration-700 delay-200">
-                                    <UploadDropzone variant="minimal" />
+                                {/* Action Button */}
+                                <div className="w-full lg:w-auto relative z-10 animate-in zoom-in-95 duration-700 delay-200">
+                                    <Button
+                                        onClick={() => navigate('/upload')}
+                                        className="w-full lg:w-auto h-20 px-12 bg-white text-neutral-900 hover:bg-neutral-50 rounded-[2rem] text-xl font-black uppercase tracking-widest shadow-2xl transition-all active:scale-95 group/btn"
+                                    >
+                                        <Plus className="mr-3 h-8 w-8 group-hover/btn:rotate-90 transition-transform duration-500" />
+                                        Subir Programa
+                                    </Button>
                                 </div>
                             </div>
 
