@@ -120,26 +120,22 @@ async function processDocument(documentId, storagePath, targetLanguage = null) {
         });
 
         const prompt = `
+      INSTRUCCIÓN DE IDIOMA CRÍTICA (REGLA DE ORO):
+      TODO EL CONTENIDO DEBE ESTAR EN ${langCfg.name.toUpperCase()}.
+      SI EL PDF ESTÁ EN INGLÉS, TU TRABAJO ES TRADUCIRLO INTEGRAMENTE AL ${langCfg.name.toUpperCase()}.
+      No dejes ni una sola palabra en inglés en los campos de texto (excepto nombres de marcas o instituciones).
+
       Analiza el siguiente documento PDF (enviado como base64).
       
       OBJETIVO: Identificar los programas educativos presentes.
       
-      IDIOMA DE SALIDA (REGLA ABSOLUTA): ${langCfg.name}.
-      
+      IDIOMA DE SALIDA SELECCIONADO: ${langCfg.name}.
       ADAPTACIÓN CULTURAL: ${langCfg.rules}
-      
-      CONTEXTO ADICIONAL DEL USUARIO: 
-      "${context}"
-
-      ---
-      REGLAS DE IDIOMA INVIOLABLES (MÁXIMA PRIORIDAD):
-      1. TODO EL CONTENIDO DEL JSON debe estar escrito en ${langCfg.name}.
-      2. TRADUCE todos los títulos, resúmenes y audiencias al ${langCfg.name}. No dejes texto en inglés del original.
-      3. Prohibido usar Inglés excepto para nombres propios de marcas.
+      CONTEXTO ADICIONAL DEL USUARIO: "${context}"
 
       INSTRUCCIONES:
       1. Detecta si el documento es de un SOLO programa o un CATÁLOGO con varios.
-      2. Para CADA programa detectado, extrae en ${langCfg.name}:
+      2. Para CADA programa detectado, extrae en ${langCfg.name} (TRADUCIENDO SIEMPRE):
          - "title": Nombre del programa (Traducido).
          - "target_audience": A quién va dirigido (Traducido).
          - "summary": Resumen ejecutivo (Traducido).
@@ -186,8 +182,6 @@ async function processDocument(documentId, storagePath, targetLanguage = null) {
 
 async function extractProgramDetails(documentId, storagePath, programTitle, availablePrograms = null, targetLanguage = null) {
     try {
-        await updateProgress(documentId, 'deep_extraction', `Extrayendo detalles de: ${programTitle}...`);
-
         let langCode = targetLanguage;
         let context = '';
 
@@ -206,6 +200,7 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
         }
 
         const langCfg = getLangConfig(langCode);
+        await updateProgress(documentId, 'deep_extraction', `Extrayendo en ${langCfg.name.toUpperCase()}: ${programTitle}...`);
 
         const base64 = await downloadPDF(storagePath);
 
@@ -217,30 +212,29 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
         });
 
         const prompt = `
-      Analiza este PDF enfocado en: "${programTitle}".
+      ORDEN CRÍTICA DE TRADUCCIÓN:
+      TIENES PROHIBIDO ESCRIBIR EN INGLÉS.
+      IDIOMA DE SALIDA (OBLIGATORIO): ${langCfg.name.toUpperCase()}.
+      SI EL PDF ESTÁ EN INGLÉS, TRADÚCELO TODO AL ${langCfg.name.toUpperCase()}.
       
-      IDIOMA DE SALIDA (OBLIGATORIO): ${langCfg.name}. 
-      TRADUCE TODO EL CONTENIDO. NO USES INGLÉS.
+      Analiza este PDF enfocado en el programa: "${programTitle}".
       
-      ADAPTACIÓN: ${langCfg.rules}
-      CONTEXTO USUARIO: "${context}"
+      REGLAS DE NEGOCIO:
+      - ADAPTACIÓN CULTURAL: ${langCfg.rules}
+      - CONTEXTO USUARIO: "${context}"
 
-      REGLAS CRÍTICAS:
-      1. Traduce objetivos, módulos, metodología y audiencia al ${langCfg.name}.
-      2. No dejes campos en inglés.
-
-      EXTRAE ESTE JSON EN ${langCfg.name}:
-      1. "title": Nombre (Traducido).
-      2. "objectives": Objetivos (Lista traducida).
-      3. "target_audience": Perfil alumno (Traducido).
-      4. "duration": Carga horaria (Traducido).
-      5. "key_highlights": Beneficios (Lista traducida).
-      6. "modules": Módulos (Nombre y resumen traducidos).
-      7. "methodology": Método (Traducido).
+      EXTRAE ESTE JSON EN ${langCfg.name.toUpperCase()} (TRADUCE TODO):
+      1. "title": Nombre del programa (Traducido).
+      2. "objectives": Objetivos del programa (Lista traducida).
+      3. "target_audience": Perfil del alumno ideal (Traducido).
+      4. "duration": Carga horaria / Duración (Traducido).
+      5. "key_highlights": Puntos clave y beneficios (Lista traducida).
+      6. "modules": Módulos o materias (Nombre y resumen de cada uno - TODO TRADUCIDO).
+      7. "methodology": Metodología de enseñanza (Traducido).
       8. "location": { "city", "country" }.
-      9. "institution_summary": Resumen institución (Traducido).
+      9. "institution_summary": Resumen de la institución educativa (Traducido).
 
-      Responde SOLO el JSON.
+      Responde SOLO el JSON purificado.
     `;
 
         const result = await model.generateContent([
