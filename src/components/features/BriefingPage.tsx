@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, FileText, Target, ListChecks, Layers, Clock, Sparkles, ChevronLeft, Download, Share2, Palette, Wand2, Globe, FileDown, Check, ArrowRight, Trash2, Eye, Loader2 } from 'lucide-react';
+import { X, FileText, Target, ListChecks, Layers, Clock, Sparkles, ChevronLeft, Share2, Palette, Globe, FileDown, Check, ArrowRight, Trash2, Eye, Loader2, MapPin, BookOpen, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -21,6 +21,19 @@ export function BriefingPage() {
     const [format, setFormat] = useState<Format>('Web');
     const [isGenerating, setIsGenerating] = useState(false);
     const [existingProposals, setExistingProposals] = useState<any[]>([]);
+    const [showChangeProgramModal, setShowChangeProgramModal] = useState(false);
+
+    // New generation options
+    const [includeInstitution, setIncludeInstitution] = useState(true);
+    const [includeLocation, setIncludeLocation] = useState(true);
+    const [ctaType, setCtaType] = useState<'popup' | 'whatsapp' | 'web'>('popup');
+    const [ctaValue, setCtaValue] = useState('');
+
+    // Regeneration State
+    const [showRegenerateModal, setShowRegenerateModal] = useState(false);
+    const [editContext, setEditContext] = useState('');
+    const [editLanguage, setEditLanguage] = useState('');
+    const [isUpdating, setIsUpdating] = useState(false);
 
     useEffect(() => {
         async function fetchDocument() {
@@ -43,6 +56,10 @@ export function BriefingPage() {
                     .order('created_at', { ascending: false });
 
                 if (!propsError) setExistingProposals(props || []);
+
+                // Initialize edit state
+                setEditContext(data.additional_context || '');
+                setEditLanguage(data.output_language || 'es');
 
             } catch (error) {
                 console.error('Error fetching document:', error);
@@ -102,11 +119,15 @@ export function BriefingPage() {
                 body: {
                     id: document.id,
                     storage_path: document.storage_path,
-                    program_title: program.title
+                    program_title: program.title,
+                    output_language: editLanguage || document.output_language
                 }
             });
 
             if (error) throw error;
+
+            // Liberamos el loading local para que el estado 'processing' de la DB (gestionado por Realtime) tome el control de la UI
+            setLoading(false);
 
             // La UI entrará en estado de "processing" automáticamente por el realtime listener
         } catch (error: any) {
@@ -143,7 +164,14 @@ export function BriefingPage() {
             // Call function in background WITHOUT blocking UI or alerting on 401/500
             // The ProposalPage has its own realtime listener to show the result
             supabase.functions.invoke('generate-proposal', {
-                body: { proposal_id: data.id }
+                body: {
+                    proposal_id: data.id,
+                    options: {
+                        include_institution: includeInstitution,
+                        include_location: includeLocation,
+                        cta_config: format === 'Web' ? { type: ctaType, value: ctaValue } : null
+                    }
+                }
             }).catch(e => {
                 console.error('Background generation error:', e);
             }).finally(() => {
@@ -153,6 +181,46 @@ export function BriefingPage() {
         } catch (error: any) {
             console.error('Error initiating proposal:', error);
             setIsGenerating(false);
+        }
+    };
+
+    const handleRegenerate = async () => {
+        if (!document) return;
+        setIsUpdating(true);
+        try {
+            // 1. Update document settings and reset briefing
+            const { error: updateError } = await supabase
+                .from('documents')
+                .update({
+                    additional_context: editContext,
+                    output_language: editLanguage,
+                    briefing: null,
+                    status: 'processing'
+                })
+                .eq('id', document.id);
+
+            if (updateError) throw updateError;
+
+            // 2. Trigger worker
+            const { error: invokeError } = await supabase.functions.invoke('process-document', {
+                body: {
+                    id: document.id,
+                    storage_path: document.storage_path,
+                    output_language: editLanguage,
+                    // Si ya tenía un briefing, es que ya seleccionó un programa. 
+                    // Si es un catálogo, intentamos recuperar el título del briefing previo si existe
+                    program_title: (document.briefing as any)?.title || null
+                }
+            });
+
+            if (invokeError) throw invokeError;
+
+            setShowRegenerateModal(false);
+        } catch (error: any) {
+            console.error('Error regenerating briefing:', error);
+            alert('Error al regenerar: ' + error.message);
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -262,7 +330,7 @@ export function BriefingPage() {
     }
 
     // Normalización de datos para evitar errores de renderizado
-    let briefing = document.briefing;
+    let briefing = document.briefing || {};
     if (Array.isArray(briefing)) {
         briefing = briefing[0] || {};
     }
@@ -296,14 +364,7 @@ export function BriefingPage() {
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                onClick={async () => {
-                                    if (confirm('¿Quieres elegir otro programa de este catálogo? Se perderá el análisis actual.')) {
-                                        setLoading(true);
-                                        await supabase.from('documents').update({ briefing: null }).eq('id', id);
-                                        setDocument(prev => prev ? { ...prev, briefing: null } : null);
-                                        setLoading(false);
-                                    }
-                                }}
+                                onClick={() => setShowChangeProgramModal(true)}
                                 className="gap-2 text-primary hover:bg-primary/5 font-bold"
                             >
                                 <Layers className="h-4 w-4" />
@@ -319,11 +380,16 @@ export function BriefingPage() {
                             className="gap-2 bg-primary/5 border-primary/20 text-primary hover:bg-primary/10"
                         >
                             <Eye className="h-4 w-4" />
-                            Ver Documento Original
+                            Ver PDF
                         </Button>
-                        <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
-                            <Download className="h-4 w-4" />
-                            Descargar
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowRegenerateModal(true)}
+                            className="gap-2 border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                        >
+                            <Sparkles className="h-4 w-4" />
+                            Regenerar Briefing
                         </Button>
                         <Button variant="outline" size="sm" className="gap-2 hidden sm:flex">
                             <Share2 className="h-4 w-4" />
@@ -349,6 +415,18 @@ export function BriefingPage() {
                             <span className="text-sm">{document.filename}</span>
                         </div>
                     </div>
+
+                    {document.additional_context && (
+                        <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl flex items-start gap-3 animate-in fade-in slide-in-from-left-4 duration-500 delay-300">
+                            <Sparkles className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                            <div className="space-y-1">
+                                <p className="text-[10px] font-black text-amber-600 uppercase tracking-widest">Instrucción Adicional</p>
+                                <p className="text-sm text-amber-800 font-medium leading-relaxed italic">
+                                    "{document.additional_context}"
+                                </p>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="grid gap-8 lg:grid-cols-12">
@@ -412,177 +490,468 @@ export function BriefingPage() {
                     </div>
 
                     {/* Sidebar Details (Right) */}
-                    <aside className="lg:col-span-4 space-y-6">
-                        {/* Highlights Card */}
-                        <div className="p-8 bg-neutral-900 text-white rounded-3xl shadow-xl space-y-6 sticky top-24 border border-white/5">
-                            <div className="flex items-center gap-2 text-white font-black tracking-[0.2em] uppercase text-[10px]">
-                                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                                Puntos Clave
-                            </div>
-                            <div className="space-y-4">
-                                {key_highlights.length > 0 ? (
-                                    key_highlights.map((hl: string, i: number) => (
-                                        <div key={i} className="flex gap-3 items-start group">
-                                            <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0 group-hover:scale-150 transition-transform" />
-                                            <p className="text-sm text-neutral-300 leading-relaxed group-hover:text-white transition-colors">
-                                                {hl}
-                                            </p>
-                                        </div>
-                                    ))
-                                ) : (
-                                    <p className="text-xs text-neutral-500 italic">No hay puntos clave disponibles.</p>
+                    <aside className="lg:col-span-4">
+                        <div className="sticky top-24 space-y-6">
+                            <div className="flex flex-col gap-3">
+                                <Button
+                                    onClick={() => setShowConfig(true)}
+                                    className="w-full bg-[#ffbd59] hover:bg-[#ffbd59]/90 text-black font-black h-14 rounded-2xl group transition-all active:scale-95 shadow-lg shadow-[#ffbd59]/20 flex items-center justify-center gap-3 uppercase tracking-wider border-none"
+                                >
+                                    <Sparkles className="h-5 w-5" />
+                                    Generar Propuesta
+                                </Button>
+
+                                {existingProposals.length > 0 && (
+                                    <Button
+                                        onClick={() => window.document.getElementById('proposals-block')?.scrollIntoView({ behavior: 'smooth' })}
+                                        className="w-full bg-[#ffbd59] hover:bg-[#ffbd59]/90 text-black font-black h-14 rounded-2xl group transition-all active:scale-95 shadow-lg shadow-[#ffbd59]/20 flex items-center justify-center gap-3 uppercase tracking-wider border-none"
+                                    >
+                                        <Eye className="h-5 w-5" />
+                                        Ver Propuestas
+                                    </Button>
                                 )}
                             </div>
 
-                            <hr className="border-neutral-800" />
-
-                            <div className="space-y-6">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
-                                        <Target className="h-3 w-3" />
-                                        Público
-                                    </div>
-                                    <p className="text-sm font-medium">{target_audience}</p>
+                            {/* Highlights Card */}
+                            <div className="p-8 bg-neutral-900 text-white rounded-3xl shadow-xl space-y-6 border border-white/5">
+                                <div className="flex items-center gap-2 text-white font-black tracking-[0.2em] uppercase text-[10px]">
+                                    <Sparkles className="h-3.5 w-3.5 text-primary" />
+                                    Puntos Clave
+                                </div>
+                                <div className="space-y-4">
+                                    {key_highlights.length > 0 ? (
+                                        key_highlights.map((hl: string, i: number) => (
+                                            <div key={i} className="flex gap-3 items-start group">
+                                                <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0 group-hover:scale-150 transition-transform" />
+                                                <p className="text-sm text-neutral-300 leading-relaxed group-hover:text-white transition-colors">
+                                                    {hl}
+                                                </p>
+                                            </div>
+                                        ))
+                                    ) : (
+                                        <p className="text-xs text-neutral-500 italic">No hay puntos clave disponibles.</p>
+                                    )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
-                                        <Clock className="h-3 w-3" />
-                                        Duración
+                                <hr className="border-neutral-800" />
+
+                                <div className="space-y-6">
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
+                                            <Target className="h-3 w-3" />
+                                            Público
+                                        </div>
+                                        <p className="text-sm font-medium">{target_audience}</p>
                                     </div>
-                                    <p className="text-sm font-medium">{duration}</p>
+
+                                    <div className="space-y-2">
+                                        <div className="flex items-center gap-2 text-xs font-bold text-neutral-400 uppercase tracking-widest">
+                                            <Clock className="h-3 w-3" />
+                                            Duración
+                                        </div>
+                                        <p className="text-sm font-medium">{duration}</p>
+                                    </div>
                                 </div>
                             </div>
 
-                            <Button
-                                onClick={() => setShowConfig(true)}
-                                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold h-12 rounded-xl group transition-all active:scale-95 shadow-lg shadow-primary/20"
-                            >
-                                <Wand2 className="mr-2 h-4 w-4 group-hover:rotate-12 transition-transform" />
-                                Nueva Propuesta
-                            </Button>
 
-                            {/* Existing Proposals Section */}
-                            {existingProposals.length > 0 && (
-                                <div className="pt-4 space-y-4">
-                                    <div className="flex items-center gap-2 text-[10px] font-black text-neutral-500 uppercase tracking-widest px-1">
-                                        Mis Propuestas ({existingProposals.length})
+                            {/* Location Info */}
+                            {(briefing.location?.city || briefing.location?.country) && briefing.location.city !== "No especificado" && (
+                                <div className="bg-neutral-50 rounded-[2rem] p-6 border border-neutral-100 flex items-center gap-4">
+                                    <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                                        <MapPin className="h-6 w-6" />
                                     </div>
-                                    <div className="space-y-2">
-                                        {existingProposals.map((prop) => (
-                                            <div
-                                                key={prop.id}
-                                                onClick={() => navigate(`/proposal/${prop.id}`)}
-                                                className="w-full flex items-center justify-between p-4 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all group relative pr-12"
-                                            >
-                                                <div className="text-left">
-                                                    <p className="text-xs font-bold text-white group-hover:text-primary transition-colors">{prop.tone}</p>
-                                                    <p className="text-[10px] text-neutral-500 font-medium">Formato {prop.format}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <button
-                                                        onClick={(e) => handleDeleteProposal(e, prop.id)}
-                                                        className="p-2 text-neutral-600 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all absolute right-2 hover:bg-red-400/10 rounded-lg"
-                                                    >
-                                                        <Trash2 className="h-4 w-4" />
-                                                    </button>
-                                                    <ArrowRight className="h-3 w-3 text-neutral-600 group-hover:text-white transition-all group-hover:translate-x-1" />
-                                                </div>
-                                            </div>
-                                        ))}
+                                    <div>
+                                        <p className="text-[10px] font-black text-neutral-400 uppercase tracking-widest leading-none mb-1">Localización</p>
+                                        <p className="text-sm font-bold text-neutral-900 leading-tight">
+                                            {[briefing.location.city, briefing.location.country].filter(c => c && c !== "No especificado").join(', ')}
+                                        </p>
                                     </div>
                                 </div>
                             )}
                         </div>
                     </aside>
                 </div>
-            </main>
 
-            {/* Proposal Configuration Modal */}
-            {showConfig && (
-                <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                    <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
-                        <header className="p-6 border-b flex justify-between items-center bg-neutral-50">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                                    <Palette className="h-5 w-5" />
-                                </div>
-                                <h3 className="font-bold text-lg">Configurar Propuesta</h3>
+                {/* Generated Proposals Section - NEW LOCATION */}
+                {existingProposals.length > 0 && (
+                    <div id="proposals-block" className="space-y-8 pt-12 border-t mt-12 w-full">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                                <h3 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3">
+                                    <Sparkles className="h-6 w-6 text-primary" />
+                                    Tus Propuestas Generadas
+                                </h3>
+                                <p className="text-xs text-neutral-500 font-medium">Modelos de marketing listos para usar</p>
                             </div>
-                            <Button variant="ghost" size="icon" onClick={() => setShowConfig(false)} className="rounded-full">
-                                <X className="h-5 w-5" />
-                            </Button>
-                        </header>
+                        </div>
 
-                        <div className="p-8 space-y-8">
-                            {/* Format Selection */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Formato de Salida</label>
-                                <div className="grid grid-cols-2 gap-3">
-                                    <button
-                                        onClick={() => setFormat('Web')}
-                                        className={cn(
-                                            "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
-                                            format === 'Web' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                                        )}
-                                    >
-                                        <Globe className="h-6 w-6" />
-                                        <span className="text-sm font-bold">Página Web</span>
-                                    </button>
-                                    <button
-                                        onClick={() => setFormat('PDF')}
-                                        className={cn(
-                                            "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
-                                            format === 'PDF' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                                        )}
-                                    >
-                                        <FileDown className="h-6 w-6" />
-                                        <span className="text-sm font-bold">Documento PDF</span>
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Tone Selection */}
-                            <div className="space-y-3">
-                                <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tono de la Comunicación</label>
-                                <div className="grid grid-cols-2 gap-2">
-                                    {(['Profesional', 'Cercano', 'Persuasivo', 'Inspirador'] as Tone[]).map((t) => (
-                                        <button
-                                            key={t}
-                                            onClick={() => setTone(t)}
-                                            className={cn(
-                                                "px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left flex justify-between items-center",
-                                                tone === t ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/30"
-                                            )}
-                                        >
-                                            {t}
-                                            {tone === t && <Check className="h-4 w-4" />}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <Button
-                                onClick={handleGenerateProposal}
-                                disabled={isGenerating}
-                                className="w-full h-14 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-lg shadow-xl disabled:opacity-50"
-                            >
-                                {isGenerating ? (
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                        Procesando...
+                        <div className="grid gap-4">
+                            {existingProposals.map((prop) => (
+                                <div
+                                    key={prop.id}
+                                    className="group p-6 bg-white border border-neutral-100 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-primary/20 transition-all flex flex-col sm:flex-row items-start sm:items-center gap-6 relative overflow-hidden"
+                                >
+                                    {/* Center: Info */}
+                                    <div className="flex-1 min-w-0 space-y-2 cursor-pointer" onClick={() => navigate(`/proposal/${prop.id}`)}>
+                                        <div className="flex items-center gap-3">
+                                            <div className="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
+                                                {prop.format || 'WEB'}
+                                            </div>
+                                            <p className="text-[10px] text-neutral-400 font-bold uppercase tracking-widest truncate">
+                                                Tono {prop.tone} • {new Date(prop.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
+                                            </p>
+                                        </div>
+                                        <h4 className="text-lg font-black text-neutral-900 leading-tight group-hover:text-primary transition-colors truncate">
+                                            {prop.content?.headline || 'Propuesta sin título'}
+                                        </h4>
                                     </div>
-                                ) : (
-                                    <>
-                                        ¡Generar Ahora!
-                                        <Sparkles className="ml-2 h-5 w-5 text-primary" />
-                                    </>
-                                )}
-                            </Button>
+
+                                    {/* Right Side: Actions */}
+                                    <div className="flex items-center gap-3 self-end sm:self-center">
+                                        <button
+                                            onClick={(e) => handleDeleteProposal(e, prop.id)}
+                                            className="p-3 text-neutral-400 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all"
+                                            title="Eliminar"
+                                        >
+                                            <Trash2 className="h-5 w-5" />
+                                        </button>
+                                        <Button
+                                            onClick={() => navigate(`/proposal/${prop.id}`)}
+                                            variant="outline"
+                                            className="rounded-2xl border-primary/20 bg-primary/5 text-primary hover:bg-primary/10 font-bold h-12 px-6 gap-2"
+                                        >
+                                            Ver Propuesta
+                                            <ArrowRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </main >
+
+            {/* Proposal Configuration Modal */}
+            {
+                showConfig && (
+                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
+                            <header className="p-6 border-b flex justify-between items-center bg-neutral-50">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
+                                        <Palette className="h-5 w-5" />
+                                    </div>
+                                    <h3 className="font-bold text-lg">Configurar Propuesta</h3>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => setShowConfig(false)} className="rounded-full">
+                                    <X className="h-5 w-5" />
+                                </Button>
+                            </header>
+
+                            <div className="p-8 space-y-8">
+                                {/* Format Selection */}
+                                <div className="space-y-3">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Formato de Salida</label>
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <button
+                                            onClick={() => setFormat('Web')}
+                                            className={cn(
+                                                "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
+                                                format === 'Web' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <Globe className="h-6 w-6" />
+                                            <span className="text-sm font-bold">Página Web</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setFormat('PDF')}
+                                            className={cn(
+                                                "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
+                                                format === 'PDF' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
+                                            )}
+                                        >
+                                            <FileDown className="h-6 w-6" />
+                                            <span className="text-sm font-bold">Documento PDF</span>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Tone Selection */}
+                                <div className="space-y-3">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tono de la Comunicación</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {(['Profesional', 'Cercano', 'Persuasivo', 'Inspirador'] as Tone[]).map((t) => (
+                                            <button
+                                                key={t}
+                                                onClick={() => setTone(t)}
+                                                className={cn(
+                                                    "px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left flex justify-between items-center",
+                                                    tone === t ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/30"
+                                                )}
+                                            >
+                                                {t}
+                                                {tone === t && <Check className="h-4 w-4" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Advanced Options */}
+                                <div className="space-y-4 pt-4 border-t border-dotted">
+                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Opciones de Contenido</label>
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-neutral-600">
+                                                    <BookOpen className="h-4 w-4" />
+                                                </div>
+                                                <span className="text-sm font-bold text-neutral-800">Intro de la Institución</span>
+                                            </div>
+                                            <button
+                                                onClick={() => setIncludeInstitution(!includeInstitution)}
+                                                className={cn(
+                                                    "w-10 h-6 rounded-full transition-all relative",
+                                                    includeInstitution ? "bg-primary" : "bg-neutral-200"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                                                    includeInstitution ? "left-5" : "left-1"
+                                                )} />
+                                            </button>
+                                        </div>
+
+                                        <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-neutral-600">
+                                                    <MapPin className="h-4 w-4" />
+                                                </div>
+                                                <span className="text-sm font-bold text-neutral-800">Localización geográfica</span>
+                                            </div>
+                                            <button
+                                                onClick={() => setIncludeLocation(!includeLocation)}
+                                                className={cn(
+                                                    "w-10 h-6 rounded-full transition-all relative",
+                                                    includeLocation ? "bg-primary" : "bg-neutral-200"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                                                    includeLocation ? "left-5" : "left-1"
+                                                )} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* CTA Configuration for Web */}
+                                {format === 'Web' && (
+                                    <div className="space-y-4 pt-4 border-t border-dotted">
+                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Call to Action (Botón principal)</label>
+                                        <div className="space-y-3">
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {[
+                                                    { id: 'popup', label: 'Formulario', icon: MessageSquare },
+                                                    { id: 'web', label: 'Página Web', icon: Globe },
+                                                    { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare }
+                                                ].map((cta) => (
+                                                    <button
+                                                        key={cta.id}
+                                                        onClick={() => setCtaType(cta.id as any)}
+                                                        className={cn(
+                                                            "flex flex-col items-center gap-2 p-3 rounded-xl border text-[10px] font-black uppercase transition-all",
+                                                            ctaType === cta.id ? "border-primary bg-primary/5 text-primary" : "border-neutral-100 bg-white text-neutral-400"
+                                                        )}
+                                                    >
+                                                        <cta.icon className="h-4 w-4" />
+                                                        {cta.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {ctaType !== 'popup' && (
+                                                <div className="space-y-2">
+                                                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{ctaType === 'whatsapp' ? 'Número WhatsApp' : 'URL de destino'}</p>
+                                                    <input
+                                                        type="text"
+                                                        value={ctaValue}
+                                                        onChange={(e) => setCtaValue(e.target.value)}
+                                                        placeholder={ctaType === 'whatsapp' ? '+34600123456' : 'https://ejemplo.com'}
+                                                        className="w-full p-4 bg-neutral-50 border border-neutral-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-inner"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <Button
+                                    onClick={handleGenerateProposal}
+                                    disabled={isGenerating}
+                                    className="w-full h-14 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-lg shadow-xl disabled:opacity-50"
+                                >
+                                    {isGenerating ? (
+                                        <div className="flex items-center gap-2">
+                                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                            Procesando...
+                                        </div>
+                                    ) : (
+                                        <>
+                                            ¡Generar Ahora!
+                                            <Sparkles className="ml-2 h-5 w-5 text-primary" />
+                                        </>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+
+            {/* Regeneration Modal */}
+            {
+                showRegenerateModal && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-lg rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <header className="p-8 border-b flex justify-between items-center bg-neutral-900 text-white">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-primary/20 rounded-2xl text-primary">
+                                        <Sparkles className="h-6 w-6" />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-black text-xl tracking-tight">Refinar Análisis IA</h3>
+                                        <p className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Ajusta las instrucciones y el idioma</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" onClick={() => setShowRegenerateModal(false)} className="rounded-full hover:bg-white/10 text-white">
+                                    <X className="h-6 w-6" />
+                                </Button>
+                            </header>
+
+                            <div className="p-8 space-y-8">
+                                <div className="space-y-4">
+                                    <label className="text-xs font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                                        <Globe className="h-3 w-3" />
+                                        Cambiar Idioma de Salida
+                                    </label>
+                                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
+                                        {[
+                                            { code: 'es', label: 'ES' },
+                                            { code: 'ca', label: 'CAT' },
+                                            { code: 'gl', label: 'GL' },
+                                            { code: 'en', label: 'EN' },
+                                            { code: 'fr', label: 'FR' },
+                                            { code: 'de', label: 'DE' },
+                                            { code: 'pt', label: 'PT' }
+                                        ].map((lang) => (
+                                            <button
+                                                key={lang.code}
+                                                onClick={() => setEditLanguage(lang.code)}
+                                                className={cn(
+                                                    "flex items-center justify-center p-3 rounded-2xl border-2 transition-all text-center h-12",
+                                                    editLanguage === lang.code
+                                                        ? "border-primary bg-primary/10 text-primary shadow-inner ring-2 ring-primary/20"
+                                                        : "border-neutral-50 bg-neutral-50/50 text-neutral-500 hover:border-neutral-200"
+                                                )}
+                                            >
+                                                <span className="text-sm font-black tracking-tighter">{lang.label}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-4">
+                                    <label className="text-xs font-black text-neutral-400 uppercase tracking-widest flex items-center gap-2">
+                                        <FileText className="h-3 w-3" />
+                                        Actualizar Contexto / Instrucciones
+                                    </label>
+                                    <textarea
+                                        value={editContext}
+                                        onChange={(e) => setEditContext(e.target.value)}
+                                        placeholder="Ej: 'Resalta más los módulos técnicos' o 'Usa un tono más comercial'."
+                                        className="w-full min-h-[120px] p-6 bg-neutral-50 border-2 border-neutral-100 rounded-[2rem] text-sm font-medium focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all outline-none resize-none"
+                                    />
+                                    <p className="text-[10px] text-neutral-400 font-bold leading-relaxed italic">
+                                        * Al regenerar, la IA volverá a leer el PDF usando estas nuevas pautas. El análisis actual se reemplazará.
+                                    </p>
+                                </div>
+
+                                <div className="flex gap-4 pt-4">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setShowRegenerateModal(false)}
+                                        className="flex-1 h-14 rounded-2xl font-bold"
+                                    >
+                                        Cancelar
+                                    </Button>
+                                    <Button
+                                        onClick={handleRegenerate}
+                                        disabled={isUpdating}
+                                        className="flex-[2] h-14 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold"
+                                    >
+                                        {isUpdating ? (
+                                            <div className="flex items-center gap-2">
+                                                <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                                Actualizando...
+                                            </div>
+                                        ) : (
+                                            <>Regenerar Análisis AI</>
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+            {/* Change Program Confirmation Modal */}
+            {
+                showChangeProgramModal && (
+                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                            <div className="p-8 text-center space-y-6">
+                                <div className="mx-auto w-20 h-20 bg-amber-50 rounded-full flex items-center justify-center text-amber-500">
+                                    <Layers className="h-10 w-10" />
+                                </div>
+                                <div className="space-y-2">
+                                    <h3 className="text-2xl font-black text-neutral-900 tracking-tight">¿Cambiar de Programa?</h3>
+                                    <p className="text-sm text-neutral-500 font-medium leading-relaxed">
+                                        Vas a volver a la selección de programas de este catálogo. <br />
+                                        <span className="text-red-500 font-bold">Se perderá el análisis actual de este programa.</span>
+                                    </p>
+                                </div>
+                                <div className="flex gap-3 pt-2">
+                                    <Button
+                                        variant="outline"
+                                        onClick={() => setShowChangeProgramModal(false)}
+                                        className="flex-1 h-14 rounded-2xl font-bold"
+                                    >
+                                        No, volver
+                                    </Button>
+                                    <Button
+                                        onClick={async () => {
+                                            setLoading(true);
+                                            setShowChangeProgramModal(false);
+                                            try {
+                                                await supabase.from('documents').update({ briefing: null }).eq('id', id);
+                                                setDocument(prev => prev ? { ...prev, briefing: null } : null);
+                                            } catch (e) {
+                                                console.error(e);
+                                            } finally {
+                                                setLoading(false);
+                                            }
+                                        }}
+                                        className="flex-1 h-14 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold"
+                                    >
+                                        Sí, cambiar
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )
+            }
+        </div >
     );
 }

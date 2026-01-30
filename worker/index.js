@@ -32,8 +32,8 @@ async function downloadPDF(storagePath) {
 
 // Main processing endpoint (Stage 1: Detect Programs)
 app.post('/process-document', async (req, res) => {
-    const { document_id, storage_path } = req.body;
-    console.log(`[${new Date().toISOString()}] 📥 Received POST /process-document for ${document_id}`);
+    const { document_id, storage_path, target_language } = req.body;
+    console.log(`[${new Date().toISOString()}] 📥 POST /process-document | ID: ${document_id} | Lang: ${target_language}`);
 
     if (!document_id || !storage_path) {
         return res.status(400).json({ error: 'Missing document_id or storage_path' });
@@ -48,8 +48,8 @@ app.post('/process-document', async (req, res) => {
 
 // Deep Extraction endpoint (Stage 2: Detailed extraction for a specific program)
 app.post('/extract-details', async (req, res) => {
-    const { document_id, storage_path, program_title } = req.body;
-    console.log(`[${new Date().toISOString()}] 📥 Received POST /extract-details for ${document_id} (${program_title})`);
+    const { document_id, storage_path, program_title, target_language } = req.body;
+    console.log(`[${new Date().toISOString()}] 📥 POST /extract-details | ID: ${document_id} | Title: ${program_title} | Lang: ${target_language}`);
 
     if (!document_id || !storage_path || !program_title) {
         return res.status(400).json({ error: 'Missing required parameters' });
@@ -205,10 +205,10 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
         const base64 = await downloadPDF(storagePath);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.0-flash',
-            systemInstruction: `Eres un analista senior de marketing educativo. Tu tarea es extraer y TRADUCIR INTEGRALMENTE el contenido al ${langCfg.name}. 
-            ESTA ES UNA ORDEN CRÍTICA: Aunque el PDF esté en inglés, tú DEBES escribir la respuesta 100% en ${langCfg.name}. 
-            No dejes objetivos, módulos o metodología en inglés. Todo debe ser traducido de forma profesional al ${langCfg.name}.`
+            model: 'gemini-1.5-pro',
+            systemInstruction: `Eres un analista senior de marketing educativo. TU MISIÓN PRINCIPAL es TRADUCIR TODO al ${langCfg.name.toUpperCase()}. 
+            CUALQUIER texto en inglés extraído del PDF debe ser traducido de forma elegante y profesional al ${langCfg.name.toUpperCase()}.
+            NO está permitido dejar nada en inglés. Si fallas en traducir, la tarea es un fracaso total.`
         });
 
         const prompt = `
