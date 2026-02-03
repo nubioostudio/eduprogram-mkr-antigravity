@@ -20,15 +20,28 @@ Deno.serve(async (req: Request) => {
 
         // 2. Initialize Supabase Client
         const supabaseUrl = Deno.env.get("SUPABASE_URL");
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
         const workerUrl = Deno.env.get("WORKER_SERVICE_URL");
 
-        if (!supabaseUrl || !supabaseKey || !workerUrl) {
+        if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey || !workerUrl) {
             console.error("Missing environment variables");
             throw new Error("Server configuration error: Missing environment variables");
         }
 
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        // Create user-scoped client to verify token
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) throw new Error("No authorization header");
+
+        const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: authHeader } }
+        });
+
+        const { data: { user }, error: authError } = await userClient.auth.getUser();
+        if (authError || !user) throw new Error("Unauthorized access");
+
+        // Service role client for database operations
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // 3. Parse Request
         const body = await req.json();

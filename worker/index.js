@@ -145,7 +145,13 @@ async function processDocument(documentId, storagePath, targetLanguage = null) {
       {
         "is_multi_program": boolean,
         "programs": [
-          { "title": "...", "target_audience": "...", "summary": "...", "duration": "..." }
+          { 
+            "title": "Nombre traducido al ${langCfg.name}", 
+            "original_title": "Nombre tal cual aparece en el PDF original",
+            "target_audience": "...", 
+            "summary": "...", 
+            "duration": "..." 
+          }
         ]
       }
     `;
@@ -184,60 +190,74 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
     try {
         let langCode = targetLanguage;
         let context = '';
+        let agencyId = null;
 
-        if (!langCode) {
-            const { data: doc, error: fetchError } = await supabase
-                .from('documents')
-                .select('output_language, additional_context')
-                .eq('id', documentId)
-                .single();
-            if (fetchError) throw fetchError;
-            langCode = doc.output_language || 'es';
-            context = doc.additional_context || '';
-        } else {
-            const { data: doc } = await supabase.from('documents').select('additional_context').eq('id', documentId).single();
-            context = doc?.additional_context || '';
-        }
+        const { data: doc, error: fetchError } = await supabase
+            .from('documents')
+            .select('agency_id, output_language, additional_context')
+            .eq('id', documentId)
+            .single();
+
+        if (fetchError) throw fetchError;
+        agencyId = doc.agency_id;
+        langCode = langCode || doc.output_language || 'es';
+        context = doc.additional_context || '';
 
         const langCfg = getLangConfig(langCode);
-        await updateProgress(documentId, 'deep_extraction', `Extrayendo en ${langCfg.name.toUpperCase()}: ${programTitle}...`);
+        await updateProgress(documentId, 'deep_extraction', `Extrayendo Inteligencia de Marketing (${langCfg.name.toUpperCase()}): ${programTitle}...`);
 
         const base64 = await downloadPDF(storagePath);
 
         const model = genAI.getGenerativeModel({
-            model: 'gemini-1.5-pro',
-            systemInstruction: `Eres un analista senior de marketing educativo. TU MISIÓN PRINCIPAL es TRADUCIR TODO al ${langCfg.name.toUpperCase()}. 
-            CUALQUIER texto en inglés extraído del PDF debe ser traducido de forma elegante y profesional al ${langCfg.name.toUpperCase()}.
-            NO está permitido dejar nada en inglés. Si fallas en traducir, la tarea es un fracaso total.`
+            model: 'gemini-2.0-flash',
+            systemInstruction: `Eres un estratega de marketing educativo de élite. 
+            Tu misión es extraer "Inteligencia Comercial" de programas educativos.
+            REGLA DE ORO DE IDIOMA: TODO debe estar en ${langCfg.name.toUpperCase()}.
+            REGLA DE MARKETING: No resumas temarios, extrae TRANSFORMACIONES y BENEFICIOS.`
         });
 
         const prompt = `
-      ORDEN CRÍTICA DE TRADUCCIÓN:
-      TIENES PROHIBIDO ESCRIBIR EN INGLÉS.
-      IDIOMA DE SALIDA (OBLIGATORIO): ${langCfg.name.toUpperCase()}.
-      SI EL PDF ESTÁ EN INGLÉS, TRADÚCELO TODO AL ${langCfg.name.toUpperCase()}.
+      EXTRACTOR DE ACTIVOS COMERCIALES (MARKETING EDUCATIONAL ENGINE)
       
-      Analiza este PDF enfocado en el programa: "${programTitle}".
-      
-      REGLAS DE NEGOCIO:
-      - ADAPTACIÓN CULTURAL: ${langCfg.rules}
-      - CONTEXTO USUARIO: "${context}"
+      Programa: "${programTitle}"
+      Idioma de Salida: ${langCfg.name.toUpperCase()}
+      Reglas Culturales: ${langCfg.rules}
+      Contexto Adicional: "${context}"
 
-      EXTRAE ESTE JSON EN ${langCfg.name.toUpperCase()} (TRADUCE TODO):
-      1. "title": Nombre del programa (Traducido).
-      2. "objectives": Objetivos del programa (Lista traducida).
-      3. "target_audience": Perfil del alumno ideal (Traducido).
-      4. "duration": Carga horaria / Duración (Traducido).
-      5. "key_highlights": Puntos clave y beneficios (Lista traducida).
-      6. "modules": Módulos o materias (Nombre y resumen de cada uno - TODO TRADUCIDO).
-      7. "methodology": Metodología de enseñanza (Traducido).
-      8. "location": { "city", "country" }.
-      9. "institution_summary": Resumen de la institución educativa (Traducido).
+      TAREA: Analiza el PDF y extrae la siguiente información técnica y emocional. 
+      Si no encuentras un dato específico, GENÉRALO basado en el contexto para que sea comercialmente atractivo.
 
-      Responde SOLO el JSON purificado.
+      ESTRUCTURA JSON REQUERIDA (TODO EN ${langCfg.name.toUpperCase()}):
+      {
+        "core_data": {
+          "title": "Nombre comercial",
+          "original_title": "Nombre original en PDF",
+          "institution": "Nombre de la institución",
+          "duration": "Carga horaria/Duración",
+          "location": "Ciudad/País/Online",
+          "price_context": "Cualquier mención a becas, precios o formas de pago"
+        },
+        "marketing_assets": {
+          "headline": "Titular de alto impacto (Gancho emocional + Beneficio)",
+          "hook": "El problema principal que resuelve (Identificar el dolor del estudiante)",
+          "target_profile": "Perfil detallado del alumno ideal",
+          "anti_profile": "Para quién NO es este programa (Filtro de calidad)",
+          "transformation": "La gran promesa de cambio tras terminar el programa",
+          "key_benefits": ["Lista de 5 beneficios tangibles, no solo características"],
+          "differentiation": "¿Por qué este programa y no el de la competencia?",
+          "methodology": "Cómo se enseña (Práctico, basado en proyectos, etc.)",
+          "access_requirements": "Qué necesita el alumno para entrar",
+          "learning_milestones": ["Los 4-6 puntos clave del temario redactados como 'Hitos de Éxito'"],
+          "social_proof_areas": "Áreas donde el programa presume de prestigio (profesores, empresas, rankings)"
+        },
+        "social_raw": {
+          "linkedin_hook": "Una frase para empezar un post de LinkedIn",
+          "instagram_concept": "Idea visual para un carrusel descriptivo"
+        }
+      }
+
+      Responde ÚNICAMENTE el JSON.
     `;
-
-        console.log(`[DEBUG] Final Prompt for Deep Extraction:\n${prompt.substring(0, 500)}...`);
 
         const result = await model.generateContent([
             prompt,
@@ -252,11 +272,47 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
 
         const deepData = JSON.parse(cleanJson);
 
-        // Update DB
+        // 1. Save individual assets to commercial_assets table for the Hub
+        const assetsToInsert = [
+            { type: 'headline', content: deepData.marketing_assets.headline },
+            { type: 'hook', content: deepData.marketing_assets.hook },
+            { type: 'target_profile', content: deepData.marketing_assets.target_profile },
+            { type: 'transformation', content: deepData.marketing_assets.transformation },
+            { type: 'differentiation', content: deepData.marketing_assets.differentiation },
+            { type: 'linkedin_hook', content: deepData.social_raw.linkedin_hook },
+        ].map(asset => ({
+            ...asset,
+            agency_id: agencyId,
+            document_id: documentId,
+            metadata: { program_title: programTitle }
+        }));
+
+        const { error: assetError } = await supabase.from('commercial_assets').insert(assetsToInsert);
+        if (assetError) console.error('Error saving commercial assets:', assetError);
+
+        // 2. Update Document with full briefing (for proposal generation compat)
+        // Map new structure to old briefing structure for backward compatibility if needed
+        const legacyBriefing = {
+            title: deepData.core_data.title,
+            original_title: deepData.core_data.original_title,
+            objectives: deepData.marketing_assets.learning_milestones,
+            target_audience: deepData.marketing_assets.target_profile,
+            duration: deepData.core_data.duration,
+            key_highlights: deepData.marketing_assets.key_benefits,
+            modules: deepData.marketing_assets.learning_milestones.map(m => ({ name: m, summary: '' })),
+            methodology: deepData.marketing_assets.methodology,
+            location: { city: deepData.core_data.location, country: '' },
+            institution_summary: deepData.core_data.institution
+        };
+
         const updatePayload = {
-            briefing: deepData,
+            briefing: legacyBriefing,
             status: 'processed',
-            metadata: { stage: 'complete', message: 'Análisis profundo completado' }
+            metadata: {
+                stage: 'complete',
+                message: 'Análisis profundo y Hub de Marketing completado',
+                marketing_engine_v1: true
+            }
         };
 
         if (availablePrograms) {
@@ -264,7 +320,7 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
         }
 
         await supabase.from('documents').update(updatePayload).eq('id', documentId);
-        console.log(`✅ Deep extraction complete for ${documentId} - ${programTitle}`);
+        console.log(`✅ Marketing Engine Extraction complete for ${documentId} - ${programTitle}`);
 
     } catch (err) {
         await handleError(documentId, err);

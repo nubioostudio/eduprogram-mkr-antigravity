@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { X, FileText, Target, ListChecks, Layers, Clock, Sparkles, ChevronLeft, Share2, Palette, Globe, FileDown, Check, ArrowRight, Trash2, Eye, Loader2, MapPin, BookOpen, MessageSquare } from 'lucide-react';
+import { X, FileText, Target, ListChecks, Layers, Clock, Sparkles, ChevronLeft, Share2, Palette, Globe, Check, ArrowRight, Trash2, Eye, Loader2, MapPin, BookOpen, MessageSquare, Edit2, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/lib/supabase';
 import { cn } from '@/lib/utils';
@@ -18,7 +18,7 @@ export function BriefingPage() {
     // Proposal Configuration State
     const [showConfig, setShowConfig] = useState(false);
     const [tone, setTone] = useState<Tone>('Profesional');
-    const [format, setFormat] = useState<Format>('Web');
+    const [format] = useState<Format>('Web');
     const [isGenerating, setIsGenerating] = useState(false);
     const [existingProposals, setExistingProposals] = useState<any[]>([]);
     const [showChangeProgramModal, setShowChangeProgramModal] = useState(false);
@@ -33,7 +33,10 @@ export function BriefingPage() {
     const [showRegenerateModal, setShowRegenerateModal] = useState(false);
     const [editContext, setEditContext] = useState('');
     const [editLanguage, setEditLanguage] = useState('');
+    const [selectedLanguage, setSelectedLanguage] = useState('es');
     const [isUpdating, setIsUpdating] = useState(false);
+    const [assets, setAssets] = useState<any[]>([]);
+    const [copyingId, setCopyingId] = useState<string | null>(null);
 
     useEffect(() => {
         async function fetchDocument() {
@@ -91,6 +94,20 @@ export function BriefingPage() {
             supabase.removeChannel(channel);
         };
     }, [id]);
+
+    useEffect(() => {
+        async function fetchAssets() {
+            if (!id) return;
+            const { data, error } = await supabase
+                .from('commercial_assets')
+                .select('*')
+                .eq('document_id', id)
+                .order('created_at', { ascending: true });
+
+            if (!error) setAssets(data || []);
+        }
+        fetchAssets();
+    }, [id, document?.status]);
 
     const handleDeleteProposal = async (e: React.MouseEvent, propId: string) => {
         e.stopPropagation();
@@ -169,7 +186,8 @@ export function BriefingPage() {
                     options: {
                         include_institution: includeInstitution,
                         include_location: includeLocation,
-                        cta_config: format === 'Web' ? { type: ctaType, value: ctaValue } : null
+                        cta_config: format === 'Web' ? { type: ctaType, value: ctaValue } : null,
+                        language: selectedLanguage
                     }
                 }
             }).catch(e => {
@@ -260,6 +278,33 @@ export function BriefingPage() {
         );
     }
 
+    if (document?.status === 'error') {
+        const metadata = (document as any).metadata;
+        const errorMsg = metadata?.message || document.processing_error || 'Error desconocido durante el procesamiento.';
+
+        return (
+            <div className="flex flex-col items-center justify-center h-screen gap-6 p-4 text-center bg-red-50">
+                <div className="p-4 bg-red-100 text-red-600 rounded-full">
+                    <X className="h-10 w-10" />
+                </div>
+                <div className="space-y-2 max-w-md">
+                    <h2 className="text-2xl font-bold text-red-900">Error en el Procesamiento</h2>
+                    <p className="text-red-700 font-medium">{errorMsg}</p>
+                    <p className="text-sm text-red-600/60 pt-4">ID del documento: {id}</p>
+                </div>
+                <div className="flex gap-3">
+                    <Button variant="outline" onClick={() => navigate('/')}>Volver al Panel</Button>
+                    <Button
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        onClick={() => setShowRegenerateModal(true)}
+                    >
+                        Reintentar con ajustes
+                    </Button>
+                </div>
+            </div>
+        );
+    }
+
     if (!document || (!document.briefing && !document.available_programs)) {
         return (
             <div className="flex flex-col items-center justify-center h-screen gap-6 p-4 text-center">
@@ -305,6 +350,11 @@ export function BriefingPage() {
                                     <div className="space-y-3">
                                         <h3 className="text-2xl font-black text-neutral-900 leading-tight group-hover:text-primary transition-colors">
                                             {prog.title}
+                                            {prog.original_title && (
+                                                <span className="text-sm font-medium text-neutral-400 block mt-1">
+                                                    — {prog.original_title}
+                                                </span>
+                                            )}
                                         </h3>
                                         <p className="text-sm text-muted-foreground font-medium line-clamp-3">
                                             {prog.summary || prog.target_audience}
@@ -409,6 +459,11 @@ export function BriefingPage() {
                     <div className="space-y-3">
                         <h1 className="text-3xl lg:text-5xl font-extrabold text-neutral-900 tracking-tight leading-[1.1]">
                             {title}
+                            {briefing.original_title && (
+                                <span className="text-xl lg:text-2xl font-bold text-neutral-400 block mt-2">
+                                    — {briefing.original_title}
+                                </span>
+                            )}
                         </h1>
                         <div className="flex items-center gap-2 text-muted-foreground">
                             <FileText className="h-4 w-4" />
@@ -428,6 +483,57 @@ export function BriefingPage() {
                         </div>
                     )}
                 </div>
+
+                {/* Marketing Hub Section (Copy-Hub) */}
+                {assets.length > 0 && (
+                    <section className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
+                        <div className="flex items-center justify-between">
+                            <div className="space-y-1">
+                                <h2 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3">
+                                    <Layers className="h-6 w-6 text-primary" />
+                                    Hub de Marketing Educativo
+                                </h2>
+                                <p className="text-sm text-neutral-500 font-medium">Activos comerciales listos para usar en tus campañas</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {assets.map((asset) => (
+                                <div
+                                    key={asset.id}
+                                    className="group bg-white p-6 rounded-[2rem] border-2 border-transparent hover:border-primary/20 shadow-sm hover:shadow-xl transition-all relative overflow-hidden flex flex-col h-full"
+                                >
+                                    <div className="flex items-center justify-between mb-4">
+                                        <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest border border-primary/20">
+                                            {asset.type.replace('_', ' ')}
+                                        </span>
+                                        <button
+                                            onClick={() => {
+                                                navigator.clipboard.writeText(asset.content);
+                                                setCopyingId(asset.id);
+                                                setTimeout(() => setCopyingId(null), 2000);
+                                            }}
+                                            className="p-2 text-neutral-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+                                        >
+                                            {copyingId === asset.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                                        </button>
+                                    </div>
+                                    <p className="text-sm font-bold text-neutral-800 leading-relaxed italic flex-1">
+                                        "{asset.content}"
+                                    </p>
+                                    <div className="mt-4 pt-4 border-t border-neutral-50 flex items-center justify-between">
+                                        <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-tighter">AI Optimized Assets</span>
+                                        <div className="flex gap-1">
+                                            <div className="w-1 h-1 rounded-full bg-primary/30" />
+                                            <div className="w-1 h-1 rounded-full bg-primary/60" />
+                                            <div className="w-1 h-1 rounded-full bg-primary" />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </section>
+                )}
 
                 <div className="grid gap-8 lg:grid-cols-12">
                     {/* Main Content (Left/Center) */}
@@ -593,7 +699,7 @@ export function BriefingPage() {
                                     className="group p-6 bg-white border border-neutral-100 rounded-[2rem] shadow-sm hover:shadow-xl hover:border-primary/20 transition-all flex flex-col sm:flex-row items-start sm:items-center gap-6 relative overflow-hidden"
                                 >
                                     {/* Center: Info */}
-                                    <div className="flex-1 min-w-0 space-y-2 cursor-pointer" onClick={() => navigate(`/proposal/${prop.id}`)}>
+                                    <div className="flex-1 min-w-0 space-y-2">
                                         <div className="flex items-center gap-3">
                                             <div className="px-3 py-1 bg-primary/10 text-primary rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap">
                                                 {prop.format || 'WEB'}
@@ -602,9 +708,42 @@ export function BriefingPage() {
                                                 Tono {prop.tone} • {new Date(prop.created_at).toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' })}
                                             </p>
                                         </div>
-                                        <h4 className="text-lg font-black text-neutral-900 leading-tight group-hover:text-primary transition-colors truncate">
-                                            {prop.content?.headline || 'Propuesta sin título'}
-                                        </h4>
+                                        <div className="flex items-center gap-2 group/title">
+                                            <h4
+                                                className="text-lg font-black text-neutral-900 leading-tight hover:text-primary transition-colors truncate cursor-pointer"
+                                                onClick={() => navigate(`/proposal/${prop.id}`)}
+                                            >
+                                                {prop.title || prop.content?.headline || 'Propuesta sin título'}
+                                            </h4>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    const newTitle = prompt('Nuevo título:', prop.title || prop.content?.headline || '');
+                                                    if (newTitle !== null && newTitle.trim()) {
+                                                        supabase
+                                                            .from('proposals')
+                                                            .update({ title: newTitle.trim() })
+                                                            .eq('id', prop.id)
+                                                            .then(() => {
+                                                                // Refresh proposals by re-fetching
+                                                                const fetchUpdated = async () => {
+                                                                    const { data } = await supabase
+                                                                        .from('proposals')
+                                                                        .select('*')
+                                                                        .eq('document_id', document.id)
+                                                                        .order('created_at', { ascending: false });
+                                                                    if (data) setExistingProposals(data);
+                                                                };
+                                                                fetchUpdated();
+                                                            });
+                                                    }
+                                                }}
+                                                className="opacity-0 group-hover/title:opacity-100 p-1.5 text-neutral-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-all"
+                                                title="Editar título"
+                                            >
+                                                <Edit2 className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {/* Right Side: Actions */}
@@ -635,179 +774,204 @@ export function BriefingPage() {
             {/* Proposal Configuration Modal */}
             {
                 showConfig && (
-                    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
-                        <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-10 duration-300">
-                            <header className="p-6 border-b flex justify-between items-center bg-neutral-50">
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-primary/10 rounded-lg text-primary">
-                                        <Palette className="h-5 w-5" />
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+                        <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 max-h-[90vh] flex flex-col">
+                            <header className="px-8 py-6 border-b flex justify-between items-center bg-neutral-50 shrink-0">
+                                <div className="flex items-center gap-4">
+                                    <div className="p-3 bg-primary/10 rounded-2xl text-primary">
+                                        <Palette className="h-6 w-6" />
                                     </div>
-                                    <h3 className="font-bold text-lg">Configurar Propuesta</h3>
+                                    <div>
+                                        <h3 className="font-black text-xl tracking-tight">Configurar Propuesta</h3>
+                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">Personaliza el formato y estilo de la IA</p>
+                                    </div>
                                 </div>
                                 <Button variant="ghost" size="icon" onClick={() => setShowConfig(false)} className="rounded-full">
-                                    <X className="h-5 w-5" />
+                                    <X className="h-6 w-6" />
                                 </Button>
                             </header>
 
-                            <div className="p-8 space-y-8">
-                                {/* Format Selection */}
-                                <div className="space-y-3">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Formato de Salida</label>
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <button
-                                            onClick={() => setFormat('Web')}
-                                            className={cn(
-                                                "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
-                                                format === 'Web' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                                            )}
-                                        >
-                                            <Globe className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Página Web</span>
-                                        </button>
-                                        <button
-                                            onClick={() => setFormat('PDF')}
-                                            className={cn(
-                                                "flex flex-col items-center gap-3 p-4 rounded-2xl border-2 transition-all",
-                                                format === 'PDF' ? "border-primary bg-primary/5 text-primary shadow-inner" : "border-transparent bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                                            )}
-                                        >
-                                            <FileDown className="h-6 w-6" />
-                                            <span className="text-sm font-bold">Documento PDF</span>
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {/* Tone Selection */}
-                                <div className="space-y-3">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Tono de la Comunicación</label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {(['Profesional', 'Cercano', 'Persuasivo', 'Inspirador'] as Tone[]).map((t) => (
-                                            <button
-                                                key={t}
-                                                onClick={() => setTone(t)}
-                                                className={cn(
-                                                    "px-4 py-3 rounded-xl border text-sm font-medium transition-all text-left flex justify-between items-center",
-                                                    tone === t ? "border-primary bg-primary/5 text-primary ring-1 ring-primary/20" : "border-border bg-white text-muted-foreground hover:border-primary/30"
-                                                )}
-                                            >
-                                                {t}
-                                                {tone === t && <Check className="h-4 w-4" />}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Advanced Options */}
-                                <div className="space-y-4 pt-4 border-t border-dotted">
-                                    <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Opciones de Contenido</label>
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-neutral-600">
-                                                    <BookOpen className="h-4 w-4" />
-                                                </div>
-                                                <span className="text-sm font-bold text-neutral-800">Intro de la Institución</span>
+                            <div className="p-8 space-y-10 overflow-y-auto">
+                                <div className="grid md:grid-cols-2 gap-10">
+                                    {/* Column 1: Format & Tone */}
+                                    <div className="space-y-8">
+                                        {/* Tone Selection */}
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-4 bg-primary rounded-full" />
+                                                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest">Idioma de la Propuesta</label>
                                             </div>
-                                            <button
-                                                onClick={() => setIncludeInstitution(!includeInstitution)}
-                                                className={cn(
-                                                    "w-10 h-6 rounded-full transition-all relative",
-                                                    includeInstitution ? "bg-primary" : "bg-neutral-200"
-                                                )}
-                                            >
-                                                <div className={cn(
-                                                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
-                                                    includeInstitution ? "left-5" : "left-1"
-                                                )} />
-                                            </button>
-                                        </div>
-
-                                        <div className="flex items-center justify-between p-4 bg-neutral-50 rounded-2xl border border-neutral-100">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-lg bg-white border flex items-center justify-center text-neutral-600">
-                                                    <MapPin className="h-4 w-4" />
-                                                </div>
-                                                <span className="text-sm font-bold text-neutral-800">Localización geográfica</span>
-                                            </div>
-                                            <button
-                                                onClick={() => setIncludeLocation(!includeLocation)}
-                                                className={cn(
-                                                    "w-10 h-6 rounded-full transition-all relative",
-                                                    includeLocation ? "bg-primary" : "bg-neutral-200"
-                                                )}
-                                            >
-                                                <div className={cn(
-                                                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
-                                                    includeLocation ? "left-5" : "left-1"
-                                                )} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* CTA Configuration for Web */}
-                                {format === 'Web' && (
-                                    <div className="space-y-4 pt-4 border-t border-dotted">
-                                        <label className="text-xs font-bold text-muted-foreground uppercase tracking-widest">Call to Action (Botón principal)</label>
-                                        <div className="space-y-3">
                                             <div className="grid grid-cols-3 gap-2">
                                                 {[
-                                                    { id: 'popup', label: 'Formulario', icon: MessageSquare },
-                                                    { id: 'web', label: 'Página Web', icon: Globe },
-                                                    { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare }
-                                                ].map((cta) => (
+                                                    { code: 'es', label: 'Español', flag: '🇪🇸' },
+                                                    { code: 'en', label: 'English', flag: '🇬🇧' },
+                                                    { code: 'fr', label: 'Français', flag: '🇫🇷' },
+                                                    { code: 'pt', label: 'Português', flag: '🇵🇹' },
+                                                    { code: 'it', label: 'Italiano', flag: '🇮🇹' },
+                                                    { code: 'de', label: 'Deutsch', flag: '🇩🇪' }
+                                                ].map((l) => (
                                                     <button
-                                                        key={cta.id}
-                                                        onClick={() => setCtaType(cta.id as any)}
+                                                        key={l.code}
+                                                        onClick={() => setSelectedLanguage(l.code)}
                                                         className={cn(
-                                                            "flex flex-col items-center gap-2 p-3 rounded-xl border text-[10px] font-black uppercase transition-all",
-                                                            ctaType === cta.id ? "border-primary bg-primary/5 text-primary" : "border-neutral-100 bg-white text-neutral-400"
+                                                            "px-4 py-3 rounded-xl border text-xs font-bold transition-all flex flex-col items-center gap-1",
+                                                            selectedLanguage === l.code ? "border-primary bg-primary/10 text-primary shadow-sm" : "border-neutral-100 bg-neutral-50/50 text-neutral-500 hover:border-primary/30"
                                                         )}
                                                     >
-                                                        <cta.icon className="h-4 w-4" />
-                                                        {cta.label}
+                                                        <span className="text-lg">{l.flag}</span>
+                                                        {l.label}
                                                     </button>
                                                 ))}
                                             </div>
+                                        </div>
 
-                                            {ctaType !== 'popup' && (
-                                                <div className="space-y-2">
-                                                    <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest">{ctaType === 'whatsapp' ? 'Número WhatsApp' : 'URL de destino'}</p>
-                                                    <input
-                                                        type="text"
-                                                        value={ctaValue}
-                                                        onChange={(e) => setCtaValue(e.target.value)}
-                                                        placeholder={ctaType === 'whatsapp' ? '+34600123456' : 'https://ejemplo.com'}
-                                                        className="w-full p-4 bg-neutral-50 border border-neutral-100 rounded-2xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all shadow-inner"
-                                                    />
-                                                </div>
-                                            )}
+                                        {/* Tone Selection */}
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-4 bg-primary rounded-full" />
+                                                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest">Tono de la Comunicación</label>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2">
+                                                {(['Profesional', 'Cercano', 'Persuasivo', 'Inspirador'] as Tone[]).map((t) => (
+                                                    <button
+                                                        key={t}
+                                                        onClick={() => setTone(t)}
+                                                        className={cn(
+                                                            "px-5 py-4 rounded-2xl border text-sm font-bold transition-all text-left flex justify-between items-center group",
+                                                            tone === t ? "border-primary bg-primary text-white shadow-lg shadow-primary/20" : "border-neutral-100 bg-neutral-50/50 text-neutral-500 hover:border-primary/30 hover:bg-white"
+                                                        )}
+                                                    >
+                                                        {t}
+                                                        {tone === t ? <Check className="h-4 w-4" /> : <div className="h-4 w-4 border border-neutral-300 rounded-full group-hover:border-primary/50" />}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
-                                )}
 
+                                    {/* Column 2: Content Options & CTA */}
+                                    <div className="space-y-8">
+                                        {/* Advanced Options */}
+                                        <div className="space-y-4">
+                                            <div className="flex items-center gap-2">
+                                                <div className="w-1.5 h-4 bg-primary rounded-full" />
+                                                <label className="text-xs font-black text-neutral-400 uppercase tracking-widest">Opciones de Contenido</label>
+                                            </div>
+                                            <div className="grid gap-3">
+                                                {[
+                                                    { id: 'inst', label: 'Intro de la Institución', icon: BookOpen, active: includeInstitution, toggle: () => setIncludeInstitution(!includeInstitution) },
+                                                    { id: 'loc', label: 'Localización geográfica', icon: MapPin, active: includeLocation, toggle: () => setIncludeLocation(!includeLocation) }
+                                                ].map((opt) => (
+                                                    <div
+                                                        key={opt.id}
+                                                        onClick={opt.toggle}
+                                                        className={cn(
+                                                            "flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer group",
+                                                            opt.active ? "border-primary/20 bg-primary/5" : "border-neutral-100 bg-white hover:border-neutral-200"
+                                                        )}
+                                                    >
+                                                        <div className="flex items-center gap-4">
+                                                            <div className={cn(
+                                                                "w-10 h-10 rounded-xl border flex items-center justify-center transition-colors",
+                                                                opt.active ? "bg-white border-primary/20 text-primary" : "bg-neutral-50 border-neutral-100 text-neutral-400"
+                                                            )}>
+                                                                <opt.icon className="h-5 w-5" />
+                                                            </div>
+                                                            <span className={cn("text-sm font-bold", opt.active ? "text-neutral-900" : "text-neutral-500")}>{opt.label}</span>
+                                                        </div>
+                                                        <button
+                                                            className={cn(
+                                                                "w-12 h-6 rounded-full transition-all relative",
+                                                                opt.active ? "bg-primary" : "bg-neutral-200"
+                                                            )}
+                                                        >
+                                                            <div className={cn(
+                                                                "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                                                                opt.active ? "left-7" : "left-1"
+                                                            )} />
+                                                        </button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+
+                                        {/* CTA Configuration */}
+                                        {format === 'Web' && (
+                                            <div className="space-y-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-1.5 h-4 bg-primary rounded-full" />
+                                                    <label className="text-xs font-black text-neutral-400 uppercase tracking-widest">Call to Action Principal</label>
+                                                </div>
+                                                <div className="space-y-4">
+                                                    <div className="grid grid-cols-3 gap-2">
+                                                        {[
+                                                            { id: 'popup', label: 'Formulario', icon: FileText },
+                                                            { id: 'web', label: 'Página Web', icon: Globe },
+                                                            { id: 'whatsapp', label: 'WhatsApp', icon: MessageSquare }
+                                                        ].map((cta) => (
+                                                            <button
+                                                                key={cta.id}
+                                                                onClick={() => setCtaType(cta.id as any)}
+                                                                className={cn(
+                                                                    "flex flex-col items-center gap-3 p-4 rounded-2xl border text-[10px] font-black uppercase transition-all",
+                                                                    ctaType === cta.id ? "border-primary bg-primary text-white shadow-lg" : "border-neutral-100 bg-neutral-50/50 text-neutral-400 hover:border-neutral-200 hover:bg-white"
+                                                                )}
+                                                            >
+                                                                <cta.icon className="h-5 w-5" />
+                                                                {cta.label}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+
+                                                    {ctaType !== 'popup' && (
+                                                        <div className="space-y-2 animate-in fade-in slide-in-from-top-2 duration-300">
+                                                            <input
+                                                                type="text"
+                                                                value={ctaValue}
+                                                                onChange={(e) => setCtaValue(e.target.value)}
+                                                                placeholder={ctaType === 'whatsapp' ? 'Número WhatsApp (ej: +34 600...)' : 'URL de destino (https://...)'}
+                                                                className="w-full p-5 bg-neutral-50 border-2 border-neutral-100 rounded-[2rem] text-sm font-bold focus:outline-none focus:ring-4 focus:ring-primary/10 focus:border-primary transition-all shadow-inner"
+                                                            />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <footer className="p-8 border-t bg-neutral-50 flex justify-end gap-4 shrink-0">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setShowConfig(false)}
+                                    className="h-14 px-8 rounded-2xl font-bold"
+                                >
+                                    Cancelar
+                                </Button>
                                 <Button
                                     onClick={handleGenerateProposal}
                                     disabled={isGenerating}
-                                    className="w-full h-14 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-bold text-lg shadow-xl disabled:opacity-50"
+                                    className="h-14 px-12 rounded-2xl bg-neutral-900 hover:bg-neutral-800 text-white font-black text-lg shadow-2xl disabled:opacity-50 min-w-[240px]"
                                 >
                                     {isGenerating ? (
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                            Procesando...
+                                        <div className="flex items-center gap-3">
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                            <span>Generando Propuesta...</span>
                                         </div>
                                     ) : (
-                                        <>
-                                            ¡Generar Ahora!
-                                            <Sparkles className="ml-2 h-5 w-5 text-primary" />
-                                        </>
+                                        <div className="flex items-center gap-3">
+                                            <span>¡Comenzar Magia!</span>
+                                            <Sparkles className="h-5 w-5 text-primary" />
+                                        </div>
                                     )}
                                 </Button>
-                            </div>
+                            </footer>
                         </div>
                     </div>
                 )
             }
+
 
             {/* Regeneration Modal */}
             {

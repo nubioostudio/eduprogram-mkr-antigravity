@@ -16,19 +16,34 @@ Deno.serve(async (req: Request) => {
 
     try {
         const body = await req.json();
-        const { proposal_id, include_institution, include_location, cta_config } = body;
+        const { proposal_id, include_institution, include_location, cta_config, language = 'es' } = body;
         currentProposalId = proposal_id;
 
         console.log("--- INICIANDO GENERACIÓN (v2.0 Flash) --- ID:", proposal_id);
 
         const supabaseUrl = Deno.env.get("SUPABASE_URL");
-        const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY");
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
         const geminiKey = Deno.env.get("GEMINI_API_KEY");
 
-        if (!supabaseUrl || !supabaseKey) throw new Error("Configuración de Supabase incompleta");
+        if (!supabaseUrl || !supabaseAnonKey || !supabaseServiceKey) {
+            throw new Error("Configuración de Supabase incompleta");
+        }
         if (!geminiKey) throw new Error("GEMINI_API_KEY no configurada");
 
-        const supabase = createClient(supabaseUrl, supabaseKey);
+        // Create user-scoped client to verify token
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) throw new Error("No authorization header");
+
+        const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+            global: { headers: { Authorization: authHeader } }
+        });
+
+        const { data: { user }, error: authError } = await userClient.auth.getUser();
+        if (authError || !user) throw new Error("Acceso no autorizado");
+
+        // Service role client for database operations
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
         // 1. Obtener datos
         const { data: proposal, error: propError } = await supabase
@@ -51,46 +66,70 @@ Deno.serve(async (req: Request) => {
         const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
         const prompt = `
-            Eres un experto en Marketing Educativo de Élite. Tu misión es transformar el siguiente BRIEFING en una PROPUESTA COMERCIAL IRRESISTIBLE.
-            
-            MARCO DE TRABAJO (Skill Marketing Educativo):
-            - Liderazgo y Transformación: Enfócate en el cambio que el estudiante experimentará.
-            - Método AIDA: Capta la atención de inmediato y guía al deseo.
+            Eres un Director Creativo Senior y experto en Marketing Educativo de Élite.
+            Tu misión es transformar el siguiente BRIEFING en una PROPUESTA COMERCIAL IRRESISTIBLE aplicando la filosofía ANTIGRAVITY LAYOUT DESIGN.
+
+            ## FILOSOFÍA DE DISEÑO (Antigravity Layout)
+            - Modo de expresión: EDITORIAL (obligatorio).
+            - Espacio comunica jerarquía y dominancia visual intencional.
+            - Tipografía estructural: Máximo 2 niveles de énfasis por viewport.
+            - El espacio negativo es un elemento de primer orden.
+            - Todo debe sentirse DISEÑADO y ejecutado a nivel maestro, con moderación y propósito.
+
+            - Liderazgo y Transformación: Enfócate en el cambio del estudiante.
+            - Método AIDA: Capta la atención, genera deseo y guía a la acción.
             - Tono: ${tone} (Usa un vocabulario rico, dinámico y persuasivo).
-            
-            BRIEFING DEL PROGRAMA:
+            - IDIOMA DE SALIDA: ${language === 'en' ? 'English' : language === 'fr' ? 'French' : language === 'pt' ? 'Portuguese' : language === 'it' ? 'Italian' : language === 'de' ? 'German' : 'Spanish'}. (DEBES escribir TODA la propuesta en este idioma).
+
+            ## SISTEMA DE BLOQUES DISPONIBLES (Propiedades de Estilo)
+            1. 'hero': { 
+                "headline", "intro", "image_prompt", 
+                "logo_position": "left"|"center"|"right", 
+                "text_align": "left"|"center"|"right", 
+                "overlay_opacity": 0-100,
+                "headline_size": "0-200%" (ej: "120%" para más grande),
+                "intro_size": "0-200%"
+            }
+            2. 'solution': { 
+                "title", "text",
+                "text_align": "left"|"center"|"right",
+                "title_size": "0-200%",
+                "text_size": "0-200%"
+            }
+            3. 'features': { 
+                "title", "items",
+                "text_align": "left"|"center"|"right",
+                "title_size": "0-200%"
+            }
+            4. 'columns': { "layout": "4-8"|"8-4"|"6-6", "left_content": { "type": "text"|"image", "value" }, "right_content": { "type": "text"|"image", "value" } }
+            5. 'image_full': { "image_url" or "image_prompt", "caption" }
+            6. 'cta': { "headline", "button_text", "button_link", "type", "is_popup" }
+            7. 'footer': { "text", "show_social": boolean }
+
+            ## DATOS DEL BRIEFING:
             ${JSON.stringify(briefing)}
-            
-            CONFIGURACIÓN OPCIONAL:
-            - Incluir Introducción de la Institución: ${include_institution ? 'SÍ' : 'NO'}
-            - Incluir Localización Detallada: ${include_location ? 'SÍ' : 'NO'}
-            - Tipo de CTA: ${cta_config?.type || 'Default'}
-            - Valor de CTA: ${cta_config?.value || 'N/A'}
-            
-            REGLAS DE RESPUESTA:
-            1. Devuelve ÚNICAMENTE un objeto JSON.
-            2. 'headline': Un titular de impacto, no genérico (ej: "Domina el Arte de..." en lugar de "Curso de...").
-            3. 'intro': Conecta con la aspiración profunda del cliente.
-            4. 'solution_presentation': Presenta el programa como el puente hacia su éxito.
-            5. 'key_benefits': 4 beneficios potentes centrados en RESULTADOS.
-            6. 'call_to_action': Un cierre emocional y directo.
-            7. 'image_prompt': Un prompt descriptivo en INGLÉS para Unsplash (ej: "cinematic photo of visionary leader in modern city office, sunrise light, 8k").
-            8. 'institution_intro' (OPCIONAL): Si la configuración lo pide, escribe 2-3 párrafos persuasivos sobre la excelencia de la institución basados en el briefing. Si no se pide, pon null.
-            9. 'location_section' (OPCIONAL): Si la configuración lo pide, escribe un texto que resalte las ventajas de estudiar en esa ciudad/país. Si no se pide, pon null.
-            10. 'cta_details': Objeto con { "text": "...", "link": "...", "type": "${cta_config?.type || 'button'}", "popup": ${cta_config?.type === 'form_popup'} }.
-            
-            ESTRUCTURA JSON:
+
+            ## CONFIGURACIÓN ESPECÍFICA:
+            - Incluir Institución: ${include_institution ? 'SÍ' : 'NO'}
+            - Incluir Localización: ${include_location ? 'SÍ' : 'NO'}
+            - CTA: ${cta_config?.type || 'Default'} (${cta_config?.value || 'N/A'})
+
+            ## TU TAREA:
+            Genera la propuesta completa usando el sistema de bloques. 
+            Asegúrate de que la primera sección (hero) sea impactante.
+            Usa el bloque 'columns' para estructurar información compleja si es necesario.
+            Mantén la coherencia visual y estratégica.
+
+            RESPONDE ÚNICAMENTE CON UN JSON VÁLIDO:
             {
-                "headline": "...",
-                "intro": "...",
-                "solution_presentation": "...",
-                "key_benefits": ["...", "...", "...", "..."],
-                "call_to_action": "...",
-                "visual_suggestions": "...",
-                "image_prompt": "...",
-                "institution_intro": "...",
-                "location_section": "...",
-                "cta_details": { "text": "...", "link": "...", "type": "...", "popup": true }
+                "sections": [
+                    { 
+                        "id": "nombre_descriptivo_unico",
+                        "type": "...", 
+                        "settings": { ... } 
+                    }
+                ],
+                "visual_suggestions": "Breve nota sobre la dirección artística sugerida"
             }
         `;
 
