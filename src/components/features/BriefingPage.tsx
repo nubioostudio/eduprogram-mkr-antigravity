@@ -9,6 +9,40 @@ import type { Document } from './DocumentList';
 type Tone = 'Profesional' | 'Cercano' | 'Persuasivo' | 'Inspirador';
 type Format = 'Web' | 'PDF';
 
+const AssetCard = ({ asset, copyingId, setCopyingId }: { asset: any, copyingId: string | null, setCopyingId: (id: string | null) => void }) => (
+    <div
+        key={asset.id}
+        className="group bg-white p-6 rounded-[2rem] border-2 border-transparent hover:border-primary/20 shadow-sm hover:shadow-xl transition-all relative overflow-hidden flex flex-col h-full"
+    >
+        <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest border border-primary/20">
+                {asset.type.replace('_', ' ')}
+            </span>
+            <button
+                onClick={() => {
+                    navigator.clipboard.writeText(asset.content);
+                    setCopyingId(asset.id);
+                    setTimeout(() => setCopyingId(null), 2000);
+                }}
+                className="p-2 text-neutral-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
+            >
+                {copyingId === asset.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+        </div>
+        <p className="text-sm font-bold text-neutral-800 leading-relaxed italic flex-1">
+            "{asset.content}"
+        </p>
+        <div className="mt-4 pt-4 border-t border-neutral-50 flex items-center justify-between">
+            <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-tighter">AI Optimized Assets</span>
+            <div className="flex gap-1">
+                <div className="w-1 h-1 rounded-full bg-primary/30" />
+                <div className="w-1 h-1 rounded-full bg-primary/60" />
+                <div className="w-1 h-1 rounded-full bg-primary" />
+            </div>
+        </div>
+    </div>
+);
+
 export function BriefingPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -108,6 +142,12 @@ export function BriefingPage() {
         }
         fetchAssets();
     }, [id, document?.status]);
+
+    const coreTypes = ['headline', 'hook', 'target_profile', 'transformation', 'differentiation'];
+    const socialTypes = ['linkedin_hook', 'instagram_concept', 'social_post', 'reel_script'];
+
+    const coreAssets = assets.filter(a => coreTypes.includes(a.type));
+    const socialAssets = assets.filter(a => socialTypes.includes(a.type));
 
     const handleDeleteProposal = async (e: React.MouseEvent, propId: string) => {
         e.stopPropagation();
@@ -486,7 +526,7 @@ export function BriefingPage() {
 
                 {/* Marketing Hub Section (Copy-Hub) */}
                 {assets.length > 0 && (
-                    <section className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
+                    <section className="space-y-8 animate-in fade-in slide-in-from-bottom-8 duration-700 delay-500">
                         <div className="flex items-center justify-between">
                             <div className="space-y-1">
                                 <h2 className="text-2xl font-black text-neutral-900 tracking-tight flex items-center gap-3">
@@ -497,41 +537,29 @@ export function BriefingPage() {
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {assets.map((asset) => (
-                                <div
-                                    key={asset.id}
-                                    className="group bg-white p-6 rounded-[2rem] border-2 border-transparent hover:border-primary/20 shadow-sm hover:shadow-xl transition-all relative overflow-hidden flex flex-col h-full"
-                                >
-                                    <div className="flex items-center justify-between mb-4">
-                                        <span className="text-[10px] font-black text-primary bg-primary/10 px-3 py-1 rounded-full uppercase tracking-widest border border-primary/20">
-                                            {asset.type.replace('_', ' ')}
-                                        </span>
-                                        <button
-                                            onClick={() => {
-                                                navigator.clipboard.writeText(asset.content);
-                                                setCopyingId(asset.id);
-                                                setTimeout(() => setCopyingId(null), 2000);
-                                            }}
-                                            className="p-2 text-neutral-400 hover:text-primary hover:bg-primary/10 rounded-xl transition-all"
-                                        >
-                                            {copyingId === asset.id ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                                        </button>
-                                    </div>
-                                    <p className="text-sm font-bold text-neutral-800 leading-relaxed italic flex-1">
-                                        "{asset.content}"
-                                    </p>
-                                    <div className="mt-4 pt-4 border-t border-neutral-50 flex items-center justify-between">
-                                        <span className="text-[9px] font-bold text-neutral-300 uppercase tracking-tighter">AI Optimized Assets</span>
-                                        <div className="flex gap-1">
-                                            <div className="w-1 h-1 rounded-full bg-primary/30" />
-                                            <div className="w-1 h-1 rounded-full bg-primary/60" />
-                                            <div className="w-1 h-1 rounded-full bg-primary" />
-                                        </div>
-                                    </div>
+                        {/* Core Copy Assets */}
+                        {coreAssets.length > 0 && (
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-black text-neutral-400 uppercase tracking-widest px-1">Core Copy & Estrategia</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {coreAssets.map((asset) => (
+                                        <AssetCard key={asset.id} asset={asset} copyingId={copyingId} setCopyingId={setCopyingId} />
+                                    ))}
                                 </div>
-                            ))}
-                        </div>
+                            </div>
+                        )}
+
+                        {/* Social Assets */}
+                        {socialAssets.length > 0 && (
+                            <div className="space-y-4">
+                                <h3 className="text-xs font-black text-neutral-400 uppercase tracking-widest px-1">Creatividades para Redes Sociales</h3>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {socialAssets.map((asset) => (
+                                        <AssetCard key={asset.id} asset={asset} copyingId={copyingId} setCopyingId={setCopyingId} />
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </section>
                 )}
 

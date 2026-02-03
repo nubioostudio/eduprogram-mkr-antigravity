@@ -280,6 +280,7 @@ async function extractProgramDetails(documentId, storagePath, programTitle, avai
             { type: 'transformation', content: deepData.marketing_assets.transformation },
             { type: 'differentiation', content: deepData.marketing_assets.differentiation },
             { type: 'linkedin_hook', content: deepData.social_raw.linkedin_hook },
+            { type: 'instagram_concept', content: deepData.social_raw.instagram_concept },
         ].map(asset => ({
             ...asset,
             agency_id: agencyId,
